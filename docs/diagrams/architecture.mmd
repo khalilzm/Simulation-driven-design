@@ -1,0 +1,30 @@
+flowchart TB
+  subgraph WEB[Web 浏览器]
+    CHAT[对话 / DXF 上传 / 方案选择]
+    DISPATCH[浏览器工具分发器]
+    WORKER[Web Worker 日照计算]
+    VIEW[平面 / 日照分布 / 时间轴]
+    DISPATCH --> WORKER
+    WORKER --> VIEW
+    VIEW --> CHAT
+  end
+  subgraph SERVER[本地 Node.js]
+    EXPRESS[Express HTTP / 会话 / 文件]
+    ADAPTER[CLI 提供方适配器]
+    CODEX[Codex CLI]
+    CLAUDE[Claude CLI]
+    EXPRESS --> ADAPTER
+    ADAPTER --> CODEX
+    ADAPTER --> CLAUDE
+  end
+  STORE[(会话工作目录：DXF / 模型版本 / 分析结果)]
+  CHAT <-->|HTTP + NDJSON| EXPRESS
+  CODEX <-->|读写文件| STORE
+  CLAUDE <-->|读写文件| STORE
+  STORE -->|轮次结束后检查 handoff| EXPRESS
+  EXPRESS -->|tool_request| DISPATCH
+  DISPATCH -->|数值 + 图像 + 版本| EXPRESS
+  EXPRESS -->|结果落盘后恢复 CLI 会话| ADAPTER
+  EXPRESS <--> STORE
+  FUTURE[热环境 / 声环境：契约 ready，未启用]
+  DISPATCH -.-> FUTURE

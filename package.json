@@ -1,0 +1,28 @@
+{
+  "name": "simulation-driven-design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "shared",
+    "server",
+    "web"
+  ],
+  "scripts": {
+    "dev": "concurrently -k -n server,web -c blue,green \"npm run dev -w server\" \"npm run dev -w web\"",
+    "dev:server": "npm run dev -w server",
+    "dev:web": "npm run dev -w web",
+    "build": "npm run build -w web",
+    "check": "npm run check -w shared && npm run check -w server && npm run check -w web",
+    "test": "npm run test -w server",
+    "start": "npm run start -w server"
+  },
+  "dependencies": {
+    "@doodle3d/clipper-js": "^1.0.11",
+    "three": "0.166.0"
+  },
+  "devDependencies": {
+    "@types/three": "0.166.0",
+    "concurrently": "^9.1.0"
+  }
+}

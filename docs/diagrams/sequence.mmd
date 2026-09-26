@@ -1,0 +1,29 @@
+sequenceDiagram
+  actor U as 用户
+  participant W as 网页
+  participant S as Express
+  participant A as Codex / Claude CLI
+  participant F as 工作目录
+  participant B as 日照 Worker
+  U->>W: DXF + 自然语言需求
+  W->>S: chat(provider, sessionId, message)
+  S->>A: 启动 CLI / 恢复精确会话
+  A->>F: 读取 DXF，生成模型与分析配置
+  A->>F: 写 handoff/request.json
+  A-->>S: 结束当前轮次
+  S->>F: 校验并冻结请求，建立 taskId / inputHash
+  S-->>W: tool_request
+  alt 页面在线且能力可用
+    W->>B: 固定版本模型与工况
+    B-->>W: 数值、时间序列、校验信息
+    W->>S: taskId + inputHash + 数值与分析图
+    S->>F: 幂等保存结果
+    S->>A: 恢复同一 CLI 会话并通知结果路径
+    A->>F: 读取证据，诊断并生成下一版
+    A-->>S: 对比解释或下一次计算请求
+    S-->>W: 回复与方案文件
+  else 页面关闭或计算中断
+    S->>F: waiting_browser / interrupted
+    Note over S,F: 不使用空结果继续优化
+  end
+  Note over W,A: 同一用户请求可跨多个 CLI 轮次；受预算和取消控制

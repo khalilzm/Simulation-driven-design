@@ -1,0 +1,30 @@
+{
+  "name": "@sdd/web",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "check": "tsc --noEmit",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@glodon/concetto-math": "0.9.0",
+    "@glodon/concetto-viewer": "0.13.17",
+    "@sdd/shared": "0.1.0",
+    "dxf-parser": "^1.1.2",
+    "earcut": "^3.2.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "0.166.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@types/three": "0.166.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.6.0",
+    "vite": "^5.4.0"
+  }
+}

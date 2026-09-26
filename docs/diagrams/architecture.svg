@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title desc">
+<title id="title">仿真反馈驱动的空间自主设计：工程目标架构</title>
+<desc id="desc">浏览器对话和日照 Worker，通过 Express 连接可切换的 Codex 或 Claude CLI。模型、日照任务和分析结果通过工作目录及轮次间文件交接。虚线模块为待实现能力。</desc>
+<defs>
+  <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="none" stroke="#6c8176" stroke-width="1.5"/></marker>
+  <style>
+    text{font-family:Inter,-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;fill:#20362b}
+    .title{font-size:34px;font-weight:650}.sub{font-size:17px;fill:#6f8074}.section{font-size:21px;font-weight:650}.label{font-size:20px;font-weight:600}.body{font-size:17px;fill:#52685a}.small{font-size:14px;fill:#728478}.tag{font-size:12px;letter-spacing:1.5px;fill:#6e8174}.line{fill:none;stroke:#6c8176;stroke-width:2;marker-end:url(#arrow);stroke-linejoin:round}.planned{stroke-dasharray:7 5}
+  </style>
+</defs>
+<rect width="1600" height="1050" fill="#f6f7f2"/>
+<text x="48" y="61" class="title">仿真反馈驱动的空间自主设计</text>
+<text x="48" y="99" class="sub">对话生成 · 浏览器日照 · 多模态反馈 · 迭代优化</text>
+<text x="1552" y="55" text-anchor="end" class="tag">ARCHITECTURE / v0.1</text>
+<text x="1552" y="83" text-anchor="end" class="small">2026.09.25 · 目标架构</text>
+
+<rect x="48" y="152" width="704" height="658" rx="20" fill="#edf4ed" stroke="#d3dfd2"/>
+<text x="80" y="191" class="section">WEB / 用户浏览器</text>
+<text x="720" y="188" text-anchor="end" class="tag">交互 + 数值计算</text>
+<rect x="80" y="218" width="272" height="140" rx="12" fill="white" stroke="#b6cdb9"/>
+<text x="104" y="253" class="label">对话工作台</text>
+<text x="104" y="287" class="body">需求输入 · 提供方选择</text>
+<text x="104" y="316" class="body">DXF 上传 · 方案查看*</text>
+<text x="104" y="340" class="small">* 上传与方案查看待接入</text>
+<rect x="416" y="218" width="304" height="140" rx="12" fill="#fff" stroke="#8bad99" class="planned"/>
+<text x="440" y="253" class="label">浏览器工具分发器</text>
+<text x="440" y="287" class="body">接收 taskId / 固定输入</text>
+<text x="440" y="316" class="body">启动 Worker · 回传证据</text>
+<text x="440" y="340" class="small">待实现 · 关联方案版本与哈希</text>
+
+<rect x="80" y="434" width="640" height="166" rx="12" fill="#fff" stroke="#8bad99" class="planned"/>
+<text x="104" y="471" class="label">日照计算 / Web Worker</text>
+<text x="694" y="469" text-anchor="end" class="tag">首期仿真目标</text>
+<text x="104" y="510" class="body">太阳位置 → 测点射线 → 几何遮挡 → 时长积分</text>
+<text x="104" y="542" class="body">室内参考面 + 窗前控制点 · 数值与输入一致性检查</text>
+<text x="104" y="575" class="small">后台线程计算；潜在直射时长，不等同于照度或热增益</text>
+<rect x="80" y="666" width="640" height="94" rx="12" fill="#fff" stroke="#8bad99" class="planned"/>
+<text x="104" y="702" class="label">结果呈现与证据</text>
+<text x="104" y="735" class="body">平面 / 时长分布 / 时间轴 / 原始数值 / 分析图</text>
+<text x="80" y="791" class="small">关闭页面会中断浏览器计算；恢复后重新领取未完成任务。</text>
+
+<rect x="800" y="152" width="752" height="386" rx="20" fill="#f5efe4" stroke="#e1d7c5"/>
+<text x="832" y="191" class="section">SERVER / 本地 Node.js</text>
+<text x="1520" y="188" text-anchor="end" class="tag">薄服务 + CLI 进程</text>
+<rect x="832" y="218" width="264" height="140" rx="12" fill="white" stroke="#d5c39f"/>
+<text x="856" y="253" class="label">Express</text>
+<text x="856" y="287" class="body">HTTP · 会话 · 事件流</text>
+<text x="856" y="316" class="body">CLI 启动 / 超时 / 取消</text>
+<text x="856" y="340" class="small">浏览器任务交接待接入</text>
+<rect x="1160" y="218" width="360" height="140" rx="12" fill="#f4f0fa" stroke="#c9bcda"/>
+<text x="1184" y="253" class="label">Agent CLI 适配器</text>
+<text x="1184" y="287" class="body">Codex CLI   /   Claude CLI</text>
+<text x="1184" y="316" class="body">解析 DXF · 生成 / 修改方案</text>
+<text x="1184" y="340" class="small">保留各自原生 session ID</text>
+<text x="832" y="426" class="body">交接方式：Agent 写请求文件 → 当前 CLI 轮次结束</text>
+<text x="832" y="458" class="body">浏览器计算 → 结果落盘 → 恢复同一 CLI 会话</text>
+<text x="832" y="502" class="small">每轮独立子进程 · 精确会话恢复 · 相同会话串行执行</text>
+
+<rect x="800" y="592" width="752" height="218" rx="20" fill="#edf0f3" stroke="#d4dce2"/>
+<text x="832" y="633" class="section">WORKSPACE / 会话工作目录</text>
+<text x="832" y="676" class="body">inputs/                 原始 DXF 与补充信息</text>
+<text x="832" y="709" class="body">designs/              不可变方案版本 · 模型 · 工况</text>
+<text x="832" y="742" class="body">simulations/       数值 · 分析图 · 日志 · 校验信息</text>
+<text x="832" y="786" class="small">当前已保存 session.json；其余目录按里程碑接入。</text>
+
+<path d="M216 358 V389 H850 V358" class="line"/>
+<text x="342" y="383" class="small">HTTP 对话 / NDJSON 事件</text>
+<path d="M1096 281 H1160" class="line"/>
+<path d="M832 249 H720" class="line"/>
+<text x="776" y="237" text-anchor="middle" class="small">任务</text>
+<path d="M720 329 H832" class="line"/>
+<text x="776" y="317" text-anchor="middle" class="small">结果</text>
+<path d="M568 358 V434" class="line"/>
+<text x="590" y="415" class="small">固定模型与工况</text>
+<path d="M400 600 V666" class="line"/>
+<text x="422" y="639" class="small">数值 + 图像</text>
+<path d="M1328 538 V592" class="line"/>
+<text x="1348" y="569" class="small">文件读写 / 结果交接</text>
+
+<rect x="48" y="854" width="1504" height="128" rx="18" fill="#f0efeb" stroke="#c5c8bf" class="planned"/>
+<text x="80" y="893" class="section">READY / 后续能力</text>
+<text x="340" y="893" class="label">热环境</text>
+<text x="340" y="925" class="body">热区 · 构造层 · 气象 · 负荷 · 系统</text>
+<text x="874" y="893" class="label">声环境</text>
+<text x="874" y="925" class="body">声源 · 接收点 · 频带 · 材料声学属性</text>
+<text x="80" y="959" class="small">契约预留，计算未启用；具体引擎接入后再确定 browser / server 执行位置。</text>
+<text x="48" y="1020" class="small">虚线：待实现或预留模块。当前交付为架构、网页对话和双 CLI 接入骨架；详细状态见 README。</text>
+<text x="1552" y="1020" text-anchor="end" class="tag">SIMULATION-DRIVEN DESIGN</text>
+</svg>
