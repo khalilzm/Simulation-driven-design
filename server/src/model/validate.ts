@@ -33,6 +33,7 @@ export function validateModel(input: unknown): ValidationResult {
   const errors: string[] = [];
 
   const meta = m.model as Record<string, unknown> | undefined;
+  const unitScale = meta?.units === 'mm' ? 1000 : 1;
   if (!meta) {
     errors.push('缺少 model 元信息');
   } else {
@@ -101,8 +102,8 @@ export function validateModel(input: unknown): ValidationResult {
     } else if (wall.fixed !== true) {
       errors.push(
         ...validateBareWallDimensions(
-          Number(wall.thickness),
-          Number(wall.height),
+          Number(wall.thickness) / unitScale,
+          Number(wall.height) / unitScale,
           `wall ${wall.id}`,
         ),
       );
@@ -225,8 +226,8 @@ export function validateModel(input: unknown): ValidationResult {
       if (isDoor) {
         errors.push(
           ...validateBareOpeningDimensions(
-            Number(opening.width),
-            Number(opening.height),
+            Number(opening.width) / unitScale,
+            Number(opening.height) / unitScale,
             'door',
             `opening ${opening.id}`,
           ),
@@ -234,8 +235,8 @@ export function validateModel(input: unknown): ValidationResult {
       } else if (isWindow) {
         errors.push(
           ...validateBareOpeningDimensions(
-            Number(opening.width),
-            Number(opening.height),
+            Number(opening.width) / unitScale,
+            Number(opening.height) / unitScale,
             'window',
             `opening ${opening.id}`,
           ),

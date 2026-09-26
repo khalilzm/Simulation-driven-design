@@ -113,7 +113,7 @@ export function validateAgentModel(input: unknown): ValidationResult {
       const a = spaceBoundaries[i];
       const b = spaceBoundaries[j];
       if (polygonsHaveAreaOverlap(a.boundary, b.boundary)) {
-        errors.push(`space ${a.id} 与 space ${b.id} 区域重叠，请调整边界或划分顺序（先小房间、后开放区）`);
+        errors.push(`space ${a.id} 与 space ${b.id} 区域重叠，请调整边界；复杂剩余区域可拆分为多个不重叠的同类 space`);
       }
     }
   }

@@ -37,6 +37,9 @@ export interface SpaceType {
 
 export interface Space {
   id: string;
+  /** 受约束分配的逻辑空间；带孔或多连通区可保存为多个简单环。 */
+  allocationId?: string;
+  enclosed?: boolean;
   boundary: Vec2[];
   /** 引用 spaceTypes.id */
   typeId: string;
@@ -64,7 +67,7 @@ export interface Wall {
 export interface Opening {
   id: string;
   hostWallId: string;
-  /** 沿墙位置（米） */
+  /** 距墙折线起点的弧长；与 width/height 一样使用 model.units。 */
   position: number;
   width: number;
   height: number;

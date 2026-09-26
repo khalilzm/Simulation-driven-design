@@ -51,6 +51,7 @@ export default function App() {
       setSessionId(res.sessionId);
       const text = await fetchFileText(res.sessionId, res.file.name);
       const entities = parseDxfText(text);
+      setCurrentRevisionId(undefined);
       setViewerContent({ kind: 'dxf', entities });
       setNotice(`已上传 ${res.file.name}（${entities.length} 个实体）`);
     } catch (err) {
@@ -82,22 +83,35 @@ export default function App() {
     setNotice('生成中…');
     let newRev: string | undefined;
     let designErrors: string[] = [];
+    let generationError: string | undefined;
+    let generationFailed = false;
+    let explanation = '';
+    let designWarnings: string[] = [];
     try {
       await generate(sid, provider, (e) => {
+        if (e.type === 'progress') setNotice(e.message);
+        if (e.type === 'text') explanation += e.text;
+        if (e.type === 'error') generationError = e.message;
+        if (e.type === 'done') generationFailed = e.status === 'failed';
         if (e.type === 'design') {
-          newRev = e.revisionId;
+          if (e.valid) newRev = e.revisionId;
           designErrors = e.valid ? [] : e.errors;
+          designWarnings = e.warnings ?? [];
           if (!e.valid) setNotice(`方案校验失败: ${e.errors.join('；')}`);
         }
-      });
+      }, currentRevisionId ?? null);
+      if (explanation) setMessages((previous) => [...previous, {
+        id: crypto.randomUUID(), role: 'assistant', content: explanation, status: generationFailed ? 'failed' : 'done',
+      }]);
+      if (generationError) throw new Error(generationError);
       if (newRev) {
         const model = await loadDesign(sid, newRev);
         setCurrentRevisionId(newRev);
         setViewerContent({ kind: 'model', model });
         setDesigns(await listDesigns(sid));
-        setNotice(designErrors.length > 0 ? `方案校验失败: ${designErrors.join('；')}` : `已生成方案 ${newRev}`);
+        setNotice(`已生成方案 ${newRev}${designWarnings.length ? `；${designWarnings.join('；')}` : ''}`);
       } else {
-        setNotice('生成完成，但未发现新方案（需使用 Cursor/Claude 并上传 DXF）');
+        setNotice(designErrors.length ? `方案校验失败，保留当前方案：${designErrors.join('；')}` : '未生成方案，请检查上方提示及输入轮廓');
       }
     } catch (err) {
       setNotice(`生成失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -131,7 +145,7 @@ export default function App() {
 
     let sid = sessionId;
     try {
-      await streamChat({ provider, sessionId, message }, (e) => {
+      await streamChat({ provider, sessionId, message, parentRevisionId: currentRevisionId ?? null }, (e) => {
         switch (e.type) {
           case 'session':
             sid = e.sessionId;
@@ -150,9 +164,10 @@ export default function App() {
             if (!sid) break;
             const sidNow = sid;
             if (!e.valid) {
-              setNotice(`方案校验失败: ${e.errors.join('；')}`);
+              setNotice(`方案校验失败，保留当前方案：${e.errors.join('；')}`);
+              break;
             } else {
-              setNotice(`已生成方案 ${e.revisionId}`);
+              setNotice(`已生成方案 ${e.revisionId}${e.warnings?.length ? `；${e.warnings.join('；')}` : ''}`);
             }
             loadDesign(sidNow, e.revisionId)
               .then((model) => {

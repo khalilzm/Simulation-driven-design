@@ -33,7 +33,7 @@ export interface DesignEvent {
   revisionId: string;
   valid: boolean;
   errors: string[];
-  /** 后处理自动修复说明（如裁切越界房间） */
+  /** 草案未满足的需求、面积偏差或未分配区域 */
   warnings?: string[];
 }
 

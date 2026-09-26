@@ -1,8 +1,5 @@
-import { centerlineWallPolygon, polygonGeometryError, resolveSpaceStyle, type SpaceModel } from '@sdd/shared';
+import { centerlineWallPolygon, polygonGeometryError, resolveSpaceStyle, wallSolidPolylines, type SpaceModel } from '@sdd/shared';
 import { triangulatePolygonEarcut, type IndexedPolygonMesh } from './polygonMesh';
-
-/** 门的显示缩放系数：门扇长度与开启弧半径 = 门宽 × 该系数 */
-const DOOR_SCALE = 0.6;
 
 /** 墙体填充（深灰 CAD 风格） */
 const WALL_FILL_COLOR = 0x666666;
@@ -92,15 +89,12 @@ export function modelToWallFills(model: SpaceModel): PolygonFill[] {
   model.walls.forEach((w, i) => {
     const pts = w.geometry.points;
     if (pts.length < 2 || w.thickness <= 0) return;
-    const outline = centerlineWallPolygon(pts, w.thickness);
-    if (!outline || outline.length < 3) return;
-    const mesh = triangulatePolygonEarcut(closeRing(outline), 0.045 + i * 0.00001);
-    if (!mesh) return;
-    fills.push({
-      mesh,
-      color: WALL_FILL_COLOR,
-      opacity: 1,
-    });
+    for (const line of wallSolidPolylines(w, model.openings)) {
+      const outline = centerlineWallPolygon(line, w.thickness);
+      if (!outline || outline.length < 3) continue;
+      const mesh = triangulatePolygonEarcut(closeRing(outline), 0.045 + i * 0.00001);
+      if (mesh) fills.push({ mesh, color: WALL_FILL_COLOR, opacity: 1 });
+    }
   });
   return fills;
 }
@@ -119,6 +113,8 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
 
   for (let i = 0; i < model.spaces.length; i++) {
     const s = model.spaces[i];
+    // 新布局由实际墙体表达围合，功能色块不再叠加闭合描边或跨过门洞。
+    if (s.enclosed !== undefined) continue;
     const style = resolveSpaceStyle(s, model.spaceTypes, i);
     const border = add(style.borderColor);
     pushPolygon(border, s.boundary);
@@ -148,15 +144,22 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
     }
     const isWindow = model.windows.some((w) => w.openingId === o.id);
     if (isWindow) {
-      pushSeg(openings, [mx - ux * 0.4, my - uy * 0.4], [mx + ux * 0.4, my + uy * 0.4]);
+      pushSeg(openings, [mx - ux * o.width / 2, my - uy * o.width / 2], [mx + ux * o.width / 2, my + uy * o.width / 2]);
       continue;
     }
     const door = model.doors.find((d) => d.openingId === o.id);
     const vx = -uy;
     const vy = ux;
-    const r = o.width * DOOR_SCALE;
-    const ax = mx - ux * r;
-    const ay = my - uy * r;
+    const r = door?.leafCount === 2 ? o.width / 2 : o.width;
+    const ax = mx - ux * o.width / 2;
+    const ay = my - uy * o.width / 2;
+    if (!door || door.swing === 'none') {
+      for (const sign of [-1, 1]) {
+        const x = mx + ux * o.width / 2 * sign, y = my + uy * o.width / 2 * sign;
+        pushSeg(openings, [x - vx * wall.thickness / 2, y - vy * wall.thickness / 2], [x + vx * wall.thickness / 2, y + vy * wall.thickness / 2]);
+      }
+      continue;
+    }
     if (door?.leafCount === 2) {
       const ex = mx + ux * r;
       const ey = my + uy * r;

@@ -1,4 +1,5 @@
 import type { Vec2 } from '@sdd/shared';
+import { intersection, type MultiPolygon, type Polygon } from 'martinez-polygon-clipping';
 import { findBoundaryOutside, isFinitePoint, polygonGeometryError, segmentOutsidePoint } from '@sdd/shared';
 
 /** shoelace 多边形面积（绝对值） */
@@ -183,43 +184,15 @@ export function findPolygonEdgeOutside(
   return inner.length >= 3 ? findBoundaryOutside(inner, outer, tolerance) : null;
 }
 
-function openRing(ring: Vec2[]): Vec2[] {
-  if (ring.length >= 4 && isPolygonClosed(ring, 1e-6)) return ring.slice(0, -1);
-  return ring;
-}
-
-/** 严格在内部（不含边界） */
-function pointStrictlyInsidePolygon(
-  point: Vec2,
-  polygon: Vec2[],
-  tolerance = DEFAULT_CONTAIN_TOL,
-): boolean {
-  if (!pointInPolygon(point, polygon)) return false;
-  const ring = openRing(polygon);
-  for (let i = 0; i < ring.length; i++) {
-    if (pointOnSegment(point, ring[i], ring[(i + 1) % ring.length], tolerance)) return false;
-  }
-  return true;
-}
-
 /** 两多边形是否存在面积重叠（共享边贴邻不算重叠） */
 export function polygonsHaveAreaOverlap(a: Vec2[], b: Vec2[]): boolean {
-  const ar = openRing(a);
-  const br = openRing(b);
-  if (ar.length < 3 || br.length < 3) return false;
-  const sample = (ring: Vec2[], other: Vec2[]) => {
-    for (const p of ring) {
-      if (pointStrictlyInsidePolygon(p, other)) return true;
-    }
-    for (let i = 0; i < ring.length; i++) {
-      const p0 = ring[i];
-      const p1 = ring[(i + 1) % ring.length];
-      const mid: Vec2 = [(p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2];
-      if (pointStrictlyInsidePolygon(mid, other)) return true;
-    }
-    return false;
-  };
-  return sample(ar, br) || sample(br, ar);
+  // 无效多边形由调用方报告；布尔运算不能接收自交边界。
+  if (polygonGeometryError(a) || polygonGeometryError(b)) return false;
+  const overlap = intersection([closePolygon(a, 0)], [closePolygon(b, 0)]);
+  if (!overlap?.length) return false;
+  const regions = typeof overlap[0][0][0] === 'number' ? [overlap as Polygon] : overlap as MultiPolygon;
+  return regions.some((rings) => polygonArea(rings[0])
+    - rings.slice(1).reduce((holes, ring) => holes + polygonArea(ring), 0) > 1e-6);
 }
 
 export interface LineSegment {

@@ -182,11 +182,12 @@ test('C 形开放办公 + 内嵌小房间：非外轮廓边均生成墙', () => 
 test('inferSpaceTypes 从 usage 补全缺失的 spaceTypes', () => {
   const floor = closePolygon([[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]);
   const model = {
-    model: { schemaVersion: '1', revisionId: 'rev-0001', units: 'm', origin: [0, 0] },
+    model: { schemaVersion: '1', revisionId: 'rev-0001', parentRevisionId: null, units: 'm', origin: [0, 0] },
     floor: { boundary: floor, elevation: 0, height: 3, topObstruction: false, bottomObstruction: false },
     spaces: [
       {
         id: 'sp-1',
+        typeId: '',
         boundary: closePolygon([[0, 0], [5, 0], [5, 8], [0, 8], [0, 0]]),
         usage: '客厅',
         targetArea: 40,
@@ -208,7 +209,7 @@ test('inferSpaceTypes 从 usage 补全缺失的 spaceTypes', () => {
 test('deriveWallsIfEmpty 不再后处理派生墙体', () => {
   const floor = closePolygon([[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]);
   const model = {
-    model: { schemaVersion: '1', revisionId: 'rev-0001', units: 'm', origin: [0, 0] },
+    model: { schemaVersion: '1', revisionId: 'rev-0001', parentRevisionId: null, units: 'm', origin: [0, 0] },
     floor: { boundary: floor, elevation: 0, height: 3, topObstruction: false, bottomObstruction: false },
     spaceTypes: [{ id: 'a', label: 'A', color: '#FFE4A8' }],
     spaces: [

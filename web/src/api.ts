@@ -35,7 +35,7 @@ async function streamNdjson(r: Response, onEvent: (e: StreamEvent) => void): Pro
 }
 
 export async function streamChat(
-  body: { provider: ProviderId; sessionId?: string; message: string },
+  body: { provider: ProviderId; sessionId?: string; message: string; parentRevisionId?: string | null },
   onEvent: (e: StreamEvent) => void,
 ): Promise<void> {
   const r = await fetch('/api/chat', {
@@ -70,13 +70,14 @@ export interface DesignSummary {
   revisionId: string;
   parentRevisionId: string | null;
   createdAt: string;
+  valid?: boolean;
 }
 
 export async function listDesigns(sessionId: string): Promise<DesignSummary[]> {
   const r = await fetch(`/api/designs/${sessionId}`);
   if (!r.ok) throw new Error(`列出版本失败: ${r.status}`);
   const j = (await r.json()) as { designs: DesignSummary[] };
-  return j.designs;
+  return j.designs.filter((design) => design.valid !== false);
 }
 
 export interface SaveDesignResult {
@@ -110,11 +111,12 @@ export async function generate(
   sessionId: string,
   provider: ProviderId,
   onEvent: (e: StreamEvent) => void,
+  parentRevisionId?: string | null,
 ): Promise<void> {
   const r = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, provider }),
+    body: JSON.stringify({ sessionId, provider, parentRevisionId }),
   });
   await streamNdjson(r, onEvent);
 }

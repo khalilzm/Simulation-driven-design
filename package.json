@@ -18,7 +18,6 @@
     "start": "npm run start -w server"
   },
   "dependencies": {
-    "@doodle3d/clipper-js": "^1.0.11",
     "three": "0.166.0"
   },
   "devDependencies": {

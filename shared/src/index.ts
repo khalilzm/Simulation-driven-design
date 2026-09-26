@@ -5,3 +5,4 @@ export * from './model';
 export * from './spaceUsage';
 export * from './polygonGeometry';
 export * from './wallStrip';
+export * from './wallOpenings';

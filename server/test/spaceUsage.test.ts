@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import type { Vec2 } from '@sdd/shared';
 import {
   parseSpaceColor,
   parseSpaceType,
@@ -19,7 +20,7 @@ test('polygonCentroid 矩形质心为中心', () => {
 });
 
 test('polygonInteriorLabelPoint L 形多边形锚点在内部', () => {
-  const boundary = [[0, 0], [10, 0], [10, 4], [4, 4], [4, 10], [0, 10], [0, 0]];
+  const boundary: Vec2[] = [[0, 0], [10, 0], [10, 4], [4, 4], [4, 10], [0, 10], [0, 0]];
   const closed = [...boundary];
   const p = polygonInteriorLabelPoint(boundary);
   assert.ok(pointInOrOnPolygon(p, closed));
@@ -30,6 +31,7 @@ test('resolveSpaceLabel 回退到 spaceType.label', () => {
     {
       id: 'sp-1',
       typeId: 'meeting',
+      usage: '',
       boundary: [[0, 0], [1, 0], [1, 1], [0, 0]],
       targetArea: 1,
       performancePreferences: {},

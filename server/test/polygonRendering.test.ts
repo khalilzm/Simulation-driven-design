@@ -5,7 +5,7 @@ import { polygonGeometryError, type SpaceModel, type Vec2 } from '@sdd/shared';
 import { findBoundaryOutside } from '@sdd/shared';
 import { polygonArea } from '../src/model/geometry';
 import { validateModel } from '../src/model/validate';
-import { modelToSpaceFills } from '../../web/src/viewer/modelRender';
+import { modelToSpaceFills, modelToWallFills, modelToLineGroups } from '../../web/src/viewer/modelRender';
 import { triangulatePolygonEarcut } from '../../web/src/viewer/polygonMesh';
 
 const screenshotFloor: Vec2[] = [
@@ -77,4 +77,24 @@ test('越界空间 viewer 仍填充，但 validateModel 会报错', () => {
   assert.equal(fills.length, 2);
   assert.equal(validateModel(model).valid, false);
   assert.ok(validateModel(model).errors.some((e) => e.includes('穿出') || e.includes('超出')));
+});
+
+test('墙体填充真正扣除门洞，门符号与洞宽一致且功能区不描闭合实线', () => {
+  const model = modelFor(rect(0, 0, 10, 8), [rect(0, 0, 10, 8)]);
+  model.walls = [{ id: 'wall', geometry: { type: 'polyline', points: [[0, 0], [5, 0], [5, 5]] }, thickness: 0.2, height: 3, fixed: false }];
+  model.openings = [{ id: 'door-opening', hostWallId: 'wall', position: 2.5, width: 1, height: 2.1 },
+    { id: 'window-opening', hostWallId: 'wall', position: 7.5, width: 2, height: 1.2 }];
+  model.doors = [{ id: 'door', openingId: 'door-opening', swing: 'none', analysisProperties: {} }];
+  model.windows = [{ id: 'window', openingId: 'window-opening', analysisProperties: {} }];
+  const fills = modelToWallFills(model);
+  assert.equal(fills.length, 3);
+  const area = fills.reduce((total, fill) => total + Array.from({ length: fill.mesh.indices.length / 3 }, (_, i) => {
+    const points: Vec2[] = Array.from(fill.mesh.indices.slice(i * 3, i * 3 + 3), (j) => [fill.mesh.positions[j * 3], fill.mesh.positions[j * 3 + 1]] as Vec2);
+    points.push(points[0]); return polygonArea(points);
+  }).reduce((sum, part) => sum + part, 0), 0);
+  assert.ok(Math.abs(area - 1.4) < 1e-5);
+  model.spaces[0].enclosed = false;
+  assert.equal(modelToLineGroups(model).length, 2);
+  const positions = modelToLineGroups(model)[1].positions;
+  assert.deepEqual(positions.slice(0, 6), [2, -0.1, 0, 2, 0.1, 0]);
 });

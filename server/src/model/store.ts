@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { SpaceModel } from '@sdd/shared';
 import { workspacesDir } from '../config';
+import { validateStoredDesign } from './designValidity';
 
 function designsDir(sessionId: string): string {
   return path.join(workspacesDir, sessionId, 'designs');
@@ -37,6 +38,17 @@ export interface DesignSummary {
   revisionId: string;
   parentRevisionId: string | null;
   createdAt: string;
+  valid: boolean;
+}
+
+export function isAcceptedDesign(sessionId: string, revisionId: string, model?: SpaceModel): boolean {
+  const file = path.join(designsDir(sessionId), revisionId, 'validation.json');
+  if (fs.existsSync(file)) {
+    try {
+      if (JSON.parse(fs.readFileSync(file, 'utf8')).valid !== true) return false;
+    } catch { return false; }
+  }
+  return validateStoredDesign(model ?? loadDesign(sessionId, revisionId)).valid;
 }
 
 export function listDesigns(sessionId: string): DesignSummary[] {
@@ -57,6 +69,7 @@ export function listDesigns(sessionId: string): DesignSummary[] {
       revisionId: entry,
       parentRevisionId: model.model?.parentRevisionId ?? null,
       createdAt,
+      valid: isAcceptedDesign(sessionId, entry, model),
     });
   }
   return out.sort((a, b) => a.revisionId.localeCompare(b.revisionId));

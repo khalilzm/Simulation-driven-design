@@ -4,6 +4,8 @@
 
 对应文档：[架构 §3/§4/§5](../docs/architecture.md)、[协议 §HTTP](../docs/protocol.md)。
 
+平面布局生成的当前流程、请求参数和校验行为见 [平面布局生成](../docs/space-generation.md)。
+
 ## 子模块
 
 | 目录 | 职责 | 状态 |

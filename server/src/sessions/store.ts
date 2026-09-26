@@ -12,6 +12,7 @@ export interface SessionRecord {
   sessionId: string;
   provider: string;
   nativeSessionId?: string;
+  requireFullCoverage?: boolean;
   messages: ChatMessage[];
   createdAt: string;
   updatedAt: string;

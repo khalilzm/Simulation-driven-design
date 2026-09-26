@@ -1,89 +1,63 @@
 import type { SpaceModel } from '@sdd/shared';
-import {
-  formatNoPostProcessRulesForPrompt,
-  formatPartitionLayoutRulesForPrompt,
-  formatSpaceUsageRulesForPrompt,
-} from '@sdd/shared';
-import { closePolygon, outlineBBox } from './model/geometry';
+import { closePolygon, outlineBBox, pointAlongWallPolyline } from './model/geometry';
+import { createRegionCatalog, regionSummaries, type RegionCatalog } from './design/layoutRegions';
 
 export interface OutlineContext {
   source: 'parent' | 'dxf' | 'none';
   outline?: string;
+  currentModel?: SpaceModel;
+  requireFullCoverage?: boolean;
+  regions?: RegionCatalog;
 }
 
-/** 注入 Agent 的轮廓摘要（不含外墙段，减 token） */
 export function outlineToText(model: SpaceModel): string {
-  const boundary = model.floor.boundary;
-  return JSON.stringify({
-    boundary,
-    origin: model.model.origin,
-    parentRevisionId: model.model.revisionId,
-    bbox: outlineBBox(boundary),
-  });
+  return JSON.stringify({ boundary: closePolygon(model.floor.boundary, 0), origin: model.model.origin,
+    units: model.model.units, parentRevisionId: model.model.revisionId, bbox: outlineBBox(model.floor.boundary) });
 }
 
 export function buildOutlineJson(outline: {
-  boundary: SpaceModel['floor']['boundary'];
-  origin: SpaceModel['model']['origin'];
+  boundary: SpaceModel['floor']['boundary']; origin: SpaceModel['model']['origin'];
   bbox: { width: number; height: number; area: number };
 }): string {
-  const boundary = closePolygon(outline.boundary, 0);
-  return JSON.stringify({ ...outline, boundary });
+  return JSON.stringify({ ...outline, boundary: closePolygon(outline.boundary, 0) });
 }
 
+/** Agent 只分配合法区域；固定轮廓、空间几何、配色和墙体由服务端编译。 */
 export function buildSpacePrompt(revisionId: string, ctx?: OutlineContext): string {
-  if (!ctx?.outline) {
-    return `你服务于基于 DXF 固定轮廓生成空间的应用。当前没有可用的固定轮廓，无法生成可靠的空间模型。
-请简要说明缺少可用轮廓，并请用户上传有效的 DXF 或确认轮廓输入；不能断言用户未上传文件，解析失败也可能导致轮廓缺失。
-本轮不要调用文件工具或写入 designs/${revisionId}/model.json，不要自行假设矩形轮廓，不要声称已完成设计。可以回答用户的概念性问题，但不能把讨论当作已生成方案。`;
-  }
+  if (!ctx?.outline) return '当前没有可用轮廓，不能生成布局。说明轮廓缺失或解析失败，请用户提供有效 DXF。可以讨论需求，本轮不要写布局文件或假设轮廓。';
+  const catalog = ctx.regions ?? createRegionCatalog(ctx.outline, ctx.currentModel);
+  const parent = catalog.parent;
+  const doorIds = new Set(parent?.doors.map((door) => door.openingId) ?? []);
+  const knownDoors = parent?.openings.filter((opening) => doorIds.has(opening.id)).map((opening) => ({
+    id: opening.id, position: pointAlongWallPolyline(parent.walls.find((wall) => wall.id === opening.hostWallId)?.geometry.points ?? [], opening.position),
+  }));
+  const lockedWalls = parent?.walls.filter((wall) => wall.fixed || parent.openings.some((opening) => opening.hostWallId === wall.id))
+    .map((wall) => ({ id: wall.id, points: wall.geometry.points }));
+  return `在给定可用区域内，按用户需求安排一个功能分区草案。优先满足功能完整、面积合适。只讨论问题时直接回答。
 
-  const sourceLabel = ctx.source === 'dxf' ? '从 DXF 解析并归一化的固定轮廓' : '已有方案的固定轮廓';
+可用区域已由程序计算，全部位于真实轮廓内。坐标单位 ${catalog.units}，area/targetArea/minArea 均为平方米；rect=[xmin,ymin,xmax,ymax]，boundary 是真实形状，adjacentIds 表示共享边。
+${JSON.stringify(regionSummaries(catalog))}
+${parent ? `\n当前分配（修改保留未涉及的功能及 ID）：\n${JSON.stringify(catalog.currentAllocations)}\n保留墙：${JSON.stringify(lockedWalls)}\n已有门位：${JSON.stringify(knownDoors)}\n` : ''}
+规则：
+- 只使用本轮区域 ID，每个区域最多分配一次；封闭房间必须连通。主要功能优先，狭长小区并入相邻功能或交通区。
+- 区域太大时用 splits 按序切分：{regionId:"r1",axis:"x",ratio:0.3}，按该区域包围盒从低坐标侧切 30%，得到 r1.a、r1.b。可继续切子区域；父区域随即失效。
+- 前台、有氧、力量等默认 enclosed:false；明确需要私密/隔音的房间 enclosed:true。程序按围合属性生成墙体，并保留已有门窗及宿主墙。
+- ${ctx.requireFullCoverage ? '所有最终区域都须分配，交通或预留用途也需明确命名。' : '可暂留未分配区域，说明用途。'} 用户给出面积下限时填写 minArea；放不下的功能写入 unmetRequirements，不能缩成碎片凑齐。
+- 未知朝向和窗位作为假设，详细使用条件留待深化。
 
-  return `你是基于 DXF 固定轮廓快速生成空间布局的设计 Agent。
-目标文件：designs/${revisionId}/model.json。用文件写入/编辑工具一次写入完整 JSON，禁止 glob/grep/read/shell/task。
-
-=== 轮廓（outline）===
-${sourceLabel}：
-${ctx.outline}
-
-- floor.boundary / model.origin 与 outline 完全一致；保留凹口，禁止 bbox 矩形替代。
-- 仅用 Write/edit/apply_patch；不探索代码库。
-
-${formatNoPostProcessRulesForPrompt()}
-
-${formatPartitionLayoutRulesForPrompt()}
-
-=== 输出契约（严格 JSON，无注释）===
-- model：{ schemaVersion:"1", revisionId:"${revisionId}", parentRevisionId, units:"m", origin }
-- floor：{ boundary, elevation:0, height:3, topObstruction:false, bottomObstruction:false }（未指定时）
-- spaceTypes、spaces、walls（见下，须完整覆盖外轮廓与分区边）
-- openings、doors、windows、fixedContext、externalContext：[]（本轮可空）
-
-${formatSpaceUsageRulesForPrompt()}
-
-=== 效率（目标一次写入、~15s 内可见平面）===
-- 禁止 read/grep/glob/shell/task；只用 Write 一次写入 model.json。
-- 通常 5～8 个 space：先小房间，最后用 1 个开放区 polygon 填剩余区域（勿拆成多个碎片 open-office）。
-- 轴对齐矩形优先；贴外轮廓边从 floor.boundary 逐段抄写；boundary 不写重复闭合点；坐标 3 位小数。
-- 各 space 不重叠；完成后 2～3 句说明即可，不要表格与长推理。`;
+用文件写入工具一次提交 designs/${revisionId}/layout.json（严格 JSON）：
+{"splits":[],"allocations":[{"id":"zone-1","usage":"具体功能","regionIds":["r1"],"enclosed":false}],"assumptions":[],"unmetRequirements":[]}
+示例仅说明字段，功能、ID 和区域由你选择；可选 targetArea/minArea，用户要求层高时可加 floorHeight（米）。不要输出空间/墙坐标或 model.json。上下文已齐全，无需读 DXF 或探索目录。
+校验失败会反馈一次修正机会。提交后用 2～3 句说明功能安排、假设和未满足需求。`;
 }
 
-/** 校验失败时发给 Agent（续跑会话，不再附带完整 system prompt） */
-export function buildValidationCorrectionMessage(revisionId: string, errors: string[]): string {
-  const lines = errors.map((e, i) => `${i + 1}. ${e}`).join('\n');
+export function buildValidationCorrectionMessage(revisionId: string, errors: string[], currentOutput?: string): string {
   return [
-    `designs/${revisionId}/model.json 校验未通过。只改报错涉及的字段，保存同一文件。`,
-    '',
-    '修正：',
-    '- floor.boundary 勿动；按报错改 space.boundary 或 walls。',
-    '- 缺墙：补 floor 外轮廓边与 space 共享边对应的 wall 中心线。',
-    '- 穿出凹口：沿 floor.boundary 折线逐点抄写，禁止两点直线跨凹口。',
-    '- 重叠：先划小房间，开放办公最后填剩余区域。',
-    '',
-    lines,
-    '',
-    '保存后 2～3 句说明改动即可。',
+    `designs/${revisionId}/layout.json 校验未通过。按错误调整区域分配或切分，重新写入同一文件的完整 JSON。`,
+    '只能引用本轮区域及其合法切分结果；固定轮廓由程序保管，不要改写 model.json。',
+    ...errors.map((error, i) => `${i + 1}. ${error}`),
+    ...(currentOutput ? ['', '当前文件内容：', currentOutput] : []),
+    '保留无关功能及 ID，简述修正。',
   ].join('\n');
 }
 

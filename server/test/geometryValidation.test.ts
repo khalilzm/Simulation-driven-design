@@ -14,12 +14,12 @@ test('isGeometryValidationError 识别可修正的几何错误', () => {
 
 test('buildValidationCorrectionMessage 包含错误与修正指引', () => {
   const msg = buildValidationCorrectionMessage('rev-0002', [
-    'space sp-1 边界顶点超出 floor 外轮廓',
+    '区域 r1 被重复分配',
   ]);
   assert.match(msg, /rev-0002/);
-  assert.match(msg, /只改报错涉及的字段/);
-  assert.match(msg, /floor\.boundary 勿动/);
-  assert.match(msg, /sp-1/);
+  assert.match(msg, /layout\.json/);
+  assert.match(msg, /区域分配或切分/);
+  assert.match(msg, /r1 被重复分配/);
 });
 
 test('filterGeometryValidationErrors 仅保留几何类错误', () => {
