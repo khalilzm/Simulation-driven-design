@@ -4,6 +4,15 @@
 
 对应文档：[架构 §7 日照计算输入](../docs/architecture.md)。
 
+## 文件
+
+| 文件 | 说明 |
+|------|------|
+| `sunlight-rev-0001.json` | 冬至卧室目标（演示未达标，对比用） |
+| `sunlight-demo-pass.json` | 夏至客厅 `space-living` ≥1h，配合 `examples/models/sunlight-demo-pass.json`，引擎校验 **passed** |
+
+Web 侧点击 **「日照达标示例」** 会加载上述模型并写入 `sunlight.json`。
+
 ## 工况内容
 
 - 经纬度、IANA 时区、日期、当地分析时段、建筑朝向。

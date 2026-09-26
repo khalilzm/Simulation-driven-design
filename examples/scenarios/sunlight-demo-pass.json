@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "1",
+  "location": {
+    "latitude": 31.2304,
+    "longitude": 121.4737,
+    "timezone": "Asia/Shanghai"
+  },
+  "analysisDate": "2025-06-21",
+  "localTimeRange": ["08:00", "16:00"],
+  "northDegrees": 0,
+  "timestepMinutes": 60,
+  "sensors": {
+    "referenceHeightAboveFloor": 0.75,
+    "gridSpacing": 2.0
+  },
+  "targets": [
+    {
+      "spaceIds": ["space-living"],
+      "minHours": 1
+    }
+  ]
+}

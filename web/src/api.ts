@@ -1,4 +1,12 @@
-import type { Capability, ProviderId, ProviderInfo, SpaceModel, StreamEvent } from '@sdd/shared';
+import type {
+  Capability,
+  ProviderId,
+  ProviderInfo,
+  SpaceModel,
+  StreamEvent,
+  SunlightConfig,
+  SunlightResult,
+} from '@sdd/shared';
 
 export interface StatusResponse {
   providers: ProviderInfo[];
@@ -86,6 +94,40 @@ export interface SaveDesignResult {
   revisionId?: string;
 }
 
+export async function fetchSunlightDemoPass(): Promise<{ model: SpaceModel; sunlight: unknown }> {
+  const r = await fetch('/api/examples/sunlight-demo-pass');
+  if (!r.ok) throw new Error(`加载日照示例失败: ${r.status}`);
+  return r.json() as Promise<{ model: SpaceModel; sunlight: unknown }>;
+}
+
+export async function patchDesignFloor(
+  sessionId: string,
+  revisionId: string,
+  floor: { elevation: number; height: number },
+): Promise<void> {
+  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/floor`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(floor),
+  });
+  const j = (await r.json()) as { errors?: string[] };
+  if (!r.ok) throw new Error(j.errors?.join('；') || `保存楼层参数失败: ${r.status}`);
+}
+
+export async function saveSunlightConfig(
+  sessionId: string,
+  revisionId: string,
+  sunlight: unknown,
+): Promise<void> {
+  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/sunlight`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(sunlight),
+  });
+  const j = (await r.json()) as { errors?: string[] };
+  if (!r.ok) throw new Error(j.errors?.join('；') || `保存日照配置失败: ${r.status}`);
+}
+
 export async function saveDesign(
   sessionId: string,
   model: SpaceModel,
@@ -104,6 +146,48 @@ export async function saveDesign(
 export async function loadDesign(sessionId: string, revisionId: string): Promise<SpaceModel> {
   const r = await fetch(`/api/designs/${sessionId}/${revisionId}`);
   if (!r.ok) throw new Error(`读取方案失败: ${r.status}`);
+  return r.json();
+}
+
+export interface SunlightRunResponse {
+  taskId: string;
+  inputHash: string;
+  simulationDir: string;
+  /** 本次是否自动从示例生成了 designs/…/sunlight.json */
+  sunlightConfigCreated?: boolean;
+  config: SunlightConfig;
+  result: SunlightResult;
+}
+
+export async function loadSunlightConfig(
+  sessionId: string,
+  revisionId: string,
+): Promise<SunlightConfig | null> {
+  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/sunlight`);
+  if (r.status === 404) return null;
+  const j = (await r.json()) as { config?: SunlightConfig; errors?: string[] };
+  if (!r.ok) throw new Error(j.errors?.join('；') || `读取日照配置失败: ${r.status}`);
+  if (!j.config) throw new Error('日照配置响应无效');
+  return j.config;
+}
+
+export async function runSunlight(sessionId: string, revisionId: string): Promise<SunlightRunResponse> {
+  const r = await fetch('/api/sunlight/run', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId, revisionId }),
+  });
+  const j = (await r.json()) as SunlightRunResponse & { error?: string; hint?: string };
+  if (!r.ok) {
+    const msg = [j.error, j.hint].filter(Boolean).join(' — ');
+    throw new Error(msg || `日照分析失败: ${r.status}`);
+  }
+  return j;
+}
+
+export async function checkSunlight(): Promise<{ capability: Capability; python: { ok: boolean; error?: string } }> {
+  const r = await fetch('/api/sunlight/check');
+  if (!r.ok) throw new Error(`检查日照环境失败: ${r.status}`);
   return r.json();
 }
 

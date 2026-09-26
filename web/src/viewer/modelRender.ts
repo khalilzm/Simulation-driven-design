@@ -1,4 +1,12 @@
-import { centerlineWallPolygon, polygonGeometryError, resolveSpaceStyle, wallSolidPolylines, type SpaceModel } from '@sdd/shared';
+import {
+  centerlineWallPolygon,
+  polygonGeometryError,
+  resolveSpaceStyle,
+  wallSolidPolylines,
+  type SpaceModel,
+  type SunlightResult,
+} from '@sdd/shared';
+import { hoursToSunlightColor, resolveSunlightColorScale } from './sunlightColor';
 import { triangulatePolygonEarcut, type IndexedPolygonMesh } from './polygonMesh';
 
 /** 墙体填充（深灰 CAD 风格） */
@@ -11,6 +19,8 @@ export interface LineGroup {
 
 export interface PolygonFill {
   spaceId?: string;
+  /** 同空间多片填充时须唯一，避免 viewport 组件互相覆盖 */
+  meshId?: string;
   mesh: IndexedPolygonMesh;
   color: number;
   opacity: number;
@@ -70,6 +80,31 @@ export function modelToSpaceFills(model: SpaceModel): PolygonFill[] {
       mesh,
       color: style.fillColor,
       opacity: style.fillOpacity,
+    });
+  });
+  return fills;
+}
+
+/** 日照模式：按空间 meanHours 着色（房间级伪彩） */
+export function modelToSunlightSpaceFills(model: SpaceModel, result: SunlightResult): PolygonFill[] {
+  const scale = resolveSunlightColorScale(result);
+  const bySpace = new Map(result.spaces.map((s) => [s.spaceId, s]));
+  const fills: PolygonFill[] = [];
+  const floorMesh = triangulatePolygonEarcut(model.floor.boundary, 0.01);
+  if (floorMesh) {
+    fills.push({ mesh: floorMesh, color: 0x9a8f7d, opacity: 0.08 });
+  }
+  model.spaces.forEach((s, i) => {
+    if (polygonGeometryError(s.boundary)) return;
+    const mesh = triangulatePolygonEarcut(s.boundary, 0.02 + i * 0.0001);
+    if (!mesh) return;
+    const metrics = bySpace.get(s.id);
+    const hours = metrics?.meanHours ?? 0;
+    fills.push({
+      spaceId: s.id,
+      mesh,
+      color: hoursToSunlightColor(hours, scale),
+      opacity: 0.72,
     });
   });
   return fills;

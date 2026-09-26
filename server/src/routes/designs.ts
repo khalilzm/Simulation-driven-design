@@ -3,7 +3,15 @@ import type { SpaceModel } from '@sdd/shared';
 import { handleSpaceTurn } from './spaceTurn';
 import { normalizeAgentGeometry } from '../model/normalizeAgent';
 import { validateStoredDesign } from '../model/designValidity';
-import { isAcceptedDesign, listDesigns, loadDesign, saveDesign } from '../model/store';
+import {
+  isAcceptedDesign,
+  listDesigns,
+  loadDesign,
+  saveDesign,
+  loadSunlightConfig,
+  saveSunlightConfig,
+  updateDesignFloor,
+} from '../model/store';
 
 export const designsRouter = Router();
 
@@ -33,6 +41,52 @@ designsRouter.post('/designs', (req, res) => {
   } catch (err) {
     res.status(409).json({ valid: false, errors: [err instanceof Error ? err.message : String(err)] });
   }
+});
+
+designsRouter.get('/designs/:sessionId/:revisionId/sunlight', (req, res) => {
+  const { sessionId, revisionId } = req.params;
+  const loaded = loadSunlightConfig(sessionId, revisionId);
+  if (loaded === null) {
+    res.status(404).json({ error: 'sunlight.json 不存在' });
+    return;
+  }
+  if (!loaded.ok) {
+    res.status(400).json({ valid: false, errors: loaded.errors });
+    return;
+  }
+  res.json({ valid: true, config: loaded.config });
+});
+
+designsRouter.put('/designs/:sessionId/:revisionId/sunlight', (req, res) => {
+  const { sessionId, revisionId } = req.params;
+  const result = saveSunlightConfig(sessionId, revisionId, req.body);
+  if (!result.ok) {
+    res.status(400).json({ valid: false, errors: result.errors });
+    return;
+  }
+  res.json({ valid: true, errors: [] });
+});
+
+designsRouter.patch('/designs/:sessionId/:revisionId/floor', (req, res) => {
+  const { sessionId, revisionId } = req.params;
+  const body = (req.body ?? {}) as { elevation?: unknown; height?: unknown };
+  if (typeof body.elevation !== 'number') {
+    res.status(400).json({ valid: false, errors: ['elevation 须为 number'] });
+    return;
+  }
+  if (typeof body.height !== 'number') {
+    res.status(400).json({ valid: false, errors: ['height 须为 number'] });
+    return;
+  }
+  const result = updateDesignFloor(sessionId, revisionId, {
+    elevation: body.elevation,
+    height: body.height,
+  });
+  if (!result.ok) {
+    res.status(400).json({ valid: false, errors: result.errors });
+    return;
+  }
+  res.json({ valid: true, errors: [] });
 });
 
 designsRouter.get('/designs/:sessionId', (req, res) => {

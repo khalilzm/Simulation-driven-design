@@ -1,6 +1,22 @@
 import { useEffect, useState } from 'react';
-import type { ProviderId } from '@sdd/shared';
-import { fetchStatus, generate, listDesigns, loadDesign, saveDesign, streamChat, uploadDxf, fetchFileText } from './api';
+import type { ProviderId, SunlightConfig } from '@sdd/shared';
+import {
+  checkSunlight,
+  fetchStatus,
+  generate,
+  listDesigns,
+  loadDesign,
+  loadSunlightConfig,
+  runSunlight,
+  fetchSunlightDemoPass,
+  saveDesign,
+  patchDesignFloor,
+  saveSunlightConfig,
+  streamChat,
+  uploadDxf,
+  fetchFileText,
+} from './api';
+import type { SunlightRunResponse } from './api';
 import type { DesignSummary } from './api';
 import type { ProviderOption } from './components/ProviderSelect';
 import { ProviderSelect } from './components/ProviderSelect';
@@ -10,7 +26,8 @@ import { Upload } from './components/Upload';
 import { Viewer } from './viewer/Viewer';
 import { parseDxfText } from './viewer/dxf';
 import { sampleModel } from './examples/sampleModel';
-import type { ChatMessage, ViewerContent } from './types';
+import type { ChatMessage, ModelViewMode, ViewerContent } from './types';
+import { SunlightPanel } from './components/SunlightPanel';
 
 export default function App() {
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -22,12 +39,39 @@ export default function App() {
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [currentRevisionId, setCurrentRevisionId] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [viewerMode, setViewerMode] = useState<ModelViewMode>('usage');
+  const [sunlightRun, setSunlightRun] = useState<SunlightRunResponse | null>(null);
+  const [sunlightConfig, setSunlightConfig] = useState<SunlightConfig | null | undefined>(undefined);
+  const [sunlightPythonOk, setSunlightPythonOk] = useState<boolean | undefined>();
 
   useEffect(() => {
     fetchStatus()
       .then((s) => setProviders(s.providers))
       .catch((e) => console.error('无法获取提供方状态', e));
+    checkSunlight()
+      .then((s) => setSunlightPythonOk(s.python.ok))
+      .catch(() => setSunlightPythonOk(false));
   }, []);
+
+  useEffect(() => {
+    const sid = sessionId;
+    const rev = currentRevisionId;
+    if (!sid || !rev) {
+      setSunlightConfig(undefined);
+      return;
+    }
+    loadSunlightConfig(sid, rev)
+      .then((cfg) => setSunlightConfig(cfg))
+      .catch(() => setSunlightConfig(null));
+  }, [sessionId, currentRevisionId]);
+
+  const withSunlight = (content: ViewerContent): ViewerContent => {
+    if (content.kind !== 'model') return content;
+    return {
+      ...content,
+      sunlight: sunlightRun?.result,
+    };
+  };
 
   const handleProviderChange = (p: ProviderId) => {
     setProvider(p);
@@ -36,6 +80,9 @@ export default function App() {
     setDesigns([]);
     setCurrentRevisionId(undefined);
     setViewerContent({ kind: 'empty' });
+    setSunlightRun(null);
+    setSunlightConfig(undefined);
+    setViewerMode('usage');
   };
 
   const ensureSessionId = (): string => {
@@ -65,11 +112,35 @@ export default function App() {
     try {
       const res = await saveDesign(sid, sampleModel);
       setCurrentRevisionId(res.revisionId);
+      setSunlightRun(null);
       setViewerContent({ kind: 'model', model: sampleModel });
       setDesigns(await listDesigns(sid));
       setNotice(`已保存方案 ${res.revisionId}`);
     } catch (err) {
       setNotice(`保存失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const handleLoadSunlightDemo = async () => {
+    const sid = ensureSessionId();
+    setBusy(true);
+    setNotice('加载日照达标示例…');
+    try {
+      const { model, sunlight } = await fetchSunlightDemoPass();
+      const res = await saveDesign(sid, model);
+      if (!res.revisionId) throw new Error('保存方案未返回 revisionId');
+      await saveSunlightConfig(sid, res.revisionId, sunlight);
+      setSunlightConfig(sunlight as SunlightConfig);
+      setCurrentRevisionId(res.revisionId);
+      setSunlightRun(null);
+      setViewerMode('usage');
+      setViewerContent({ kind: 'model', model });
+      setDesigns(await listDesigns(sid));
+      setNotice(`已加载日照示例 ${res.revisionId}（夏至客厅≥1h）；点击「运行日照」查看结果`);
+    } catch (err) {
+      setNotice(`加载失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -107,6 +178,8 @@ export default function App() {
       if (newRev) {
         const model = await loadDesign(sid, newRev);
         setCurrentRevisionId(newRev);
+        setSunlightRun(null);
+        setViewerMode('usage');
         setViewerContent({ kind: 'model', model });
         setDesigns(await listDesigns(sid));
         setNotice(`已生成方案 ${newRev}${designWarnings.length ? `；${designWarnings.join('；')}` : ''}`);
@@ -126,9 +199,91 @@ export default function App() {
     try {
       const model = await loadDesign(sid, revisionId);
       setCurrentRevisionId(revisionId);
+      setSunlightRun(null);
+      setViewerMode('usage');
       setViewerContent({ kind: 'model', model });
     } catch (err) {
       setNotice(`读取方案失败: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const runSunlightForCurrentDesign = async (noticePrefix = '日照分析中…') => {
+    const sid = sessionId;
+    const rev = currentRevisionId;
+    if (!sid || !rev || viewerContent.kind !== 'model') {
+      setNotice('请先选择一版方案');
+      return;
+    }
+    setBusy(true);
+    setNotice(noticePrefix);
+    try {
+      const out = await runSunlight(sid, rev);
+      setSunlightRun(out);
+      setSunlightConfig(out.config);
+      setViewerMode('sunlight');
+      const created = out.sunlightConfigCreated ? '；已写入默认 sunlight.json（可编辑后重算）' : '';
+      const ver =
+        out.result.verification.status === 'passed'
+          ? '达标通过'
+          : out.result.verification.status === 'failed'
+            ? '未达标'
+            : '待复核';
+      setNotice(
+        `日照完成 ${out.taskId.slice(0, 8)}…（间距 ${out.config.sensors.gridSpacing} m，${out.result.metrics.sensorCount} 测点，${ver}）${created}`,
+      );
+    } catch (err) {
+      setNotice(`日照失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleRunSunlight = () => runSunlightForCurrentDesign();
+
+  const handleSaveSunlightConfig = async (
+    next: SunlightConfig,
+    floor: { elevation: number; height: number },
+    rerun: boolean,
+  ) => {
+    const sid = sessionId;
+    const rev = currentRevisionId;
+    if (!sid || !rev) return;
+    setBusy(true);
+    try {
+      await patchDesignFloor(sid, rev, floor);
+      if (viewerContent.kind === 'model') {
+        setViewerContent({
+          ...viewerContent,
+          model: {
+            ...viewerContent.model,
+            floor: { ...viewerContent.model.floor, elevation: floor.elevation, height: floor.height },
+          },
+        });
+      }
+      await saveSunlightConfig(sid, rev, next);
+      setSunlightConfig(next);
+      if (!rerun) {
+        setNotice('已保存楼层标高/层高与 sunlight.json');
+        return;
+      }
+      setNotice('重新计算日照…');
+      const out = await runSunlight(sid, rev);
+      setSunlightRun(out);
+      setSunlightConfig(out.config);
+      setViewerMode('sunlight');
+      const ver =
+        out.result.verification.status === 'passed'
+          ? '达标通过'
+          : out.result.verification.status === 'failed'
+            ? '未达标'
+            : '待复核';
+      setNotice(
+        `日照完成 · ${out.config.analysisDate} ${out.config.localTimeRange.join('–')} · ${out.result.metrics.sensorCount} 测点 · ${ver}`,
+      );
+    } catch (err) {
+      setNotice(`保存日照配置失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -172,6 +327,8 @@ export default function App() {
             loadDesign(sidNow, e.revisionId)
               .then((model) => {
                 setCurrentRevisionId(e.revisionId);
+                setSunlightRun(null);
+                setViewerMode('usage');
                 setViewerContent({ kind: 'model', model });
                 return listDesigns(sidNow);
               })
@@ -217,12 +374,26 @@ export default function App() {
             <button onClick={handleLoadSample} disabled={busy}>
               加载示例方案
             </button>
+            <button onClick={handleLoadSunlightDemo} disabled={busy} title="带窗户型 + 夏至日照场景，运行后校验应为 passed">
+              日照达标示例
+            </button>
             <button onClick={handleGenerate} disabled={busy}>
               生成方案
             </button>
           </div>
           {notice && <div className="notice">{notice}</div>}
         </div>
+        <SunlightPanel
+          model={viewerContent.kind === 'model' ? viewerContent.model : undefined}
+          config={sunlightConfig}
+          result={sunlightRun?.result}
+          pythonOk={sunlightPythonOk}
+          busy={busy}
+          canRun={Boolean(sessionId && currentRevisionId && viewerContent.kind === 'model')}
+          onRun={handleRunSunlight}
+          onShowMap={() => setViewerMode('sunlight')}
+          onSaveConfig={handleSaveSunlightConfig}
+        />
         {designs.length > 0 && (
           <div className="design-list">
             {designs.map((d) => (
@@ -239,7 +410,11 @@ export default function App() {
         <Chat messages={messages} />
         <Composer disabled={busy} onSend={handleSend} />
       </div>
-      <Viewer content={viewerContent} />
+      <Viewer
+        content={withSunlight(viewerContent)}
+        viewMode={viewerMode}
+        onViewModeChange={setViewerMode}
+      />
     </div>
   );
 }

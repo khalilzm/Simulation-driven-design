@@ -323,3 +323,354 @@ body {
   border: 1px solid rgba(0, 0, 0, 0.12);
   flex-shrink: 0;
 }
+
+.sunlight-panel {
+  padding: 10px 16px;
+  border-bottom: 1px solid #d8d2c4;
+  font-size: 12px;
+}
+
+.sunlight-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.sunlight-panel-title {
+  font-weight: 600;
+  color: #3a3a3a;
+}
+
+.sunlight-panel-header button {
+  background: #ffffff;
+  color: #3a3a3a;
+  border: 1px solid #d8d2c4;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.sunlight-panel-header button:hover:not(:disabled) {
+  background: #efe8da;
+}
+
+.sunlight-panel-header button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sunlight-form {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sunlight-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sunlight-form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.sunlight-form-row .sunlight-field {
+  flex: 1;
+  min-width: 0;
+}
+
+.sunlight-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: #6b6459;
+}
+
+.sunlight-field--full {
+  width: 100%;
+}
+
+.sunlight-field input[type='number'],
+.sunlight-field input[type='text'],
+.sunlight-field input[type='date'],
+.sunlight-field input[type='time'] {
+  font-size: 12px;
+  padding: 5px 8px;
+  border: 1px solid #d8d2c4;
+  border-radius: 6px;
+  background: #fff;
+  color: #3a3a3a;
+}
+
+.sunlight-field input:disabled {
+  opacity: 0.6;
+}
+
+.sunlight-form-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.sunlight-form-actions button {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #d8d2c4;
+  background: #fff;
+  cursor: pointer;
+}
+
+.sunlight-form-actions button:hover:not(:disabled) {
+  background: #f5f0e6;
+}
+
+.sunlight-form-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sunlight-form-actions .sunlight-form-primary {
+  background: #3d5a4c;
+  border-color: #3d5a4c;
+  color: #fff;
+}
+
+.sunlight-form-actions .sunlight-form-primary:hover:not(:disabled) {
+  background: #2f463b;
+}
+
+.sunlight-sampling {
+  margin-bottom: 8px;
+  padding: 8px;
+  background: #f7f3eb;
+  border-radius: 6px;
+  border: 1px solid #e8e0d2;
+}
+
+.sunlight-sampling-title {
+  font-weight: 600;
+  color: #4a443a;
+  margin-bottom: 4px;
+}
+
+.sunlight-sampling-current {
+  margin: 0 0 8px;
+  color: #5a5348;
+  line-height: 1.45;
+}
+
+.sunlight-sampling-current strong {
+  font-weight: 600;
+  color: #2a2620;
+}
+
+.sunlight-sampling-sep {
+  margin: 0 4px;
+  color: #a39a8c;
+}
+
+.sunlight-spacing-presets {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.sunlight-spacing-label {
+  color: #6b6459;
+  margin-right: 2px;
+}
+
+.sunlight-spacing-chip {
+  background: #ffffff;
+  color: #3a3a3a;
+  border: 1px solid #d8d2c4;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.sunlight-spacing-chip:hover:not(:disabled) {
+  background: #efe8da;
+}
+
+.sunlight-spacing-chip.active {
+  border-color: #3a6ea5;
+  background: #eef3f8;
+  color: #2a5080;
+}
+
+.sunlight-spacing-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.sunlight-hint {
+  margin: 6px 0 0;
+  color: #6b6459;
+  line-height: 1.4;
+}
+
+.sunlight-hint.warn {
+  color: #a52a22;
+}
+
+.sunlight-verification {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  line-height: 1.35;
+}
+
+.sunlight-verification.passed {
+  background: #e8f3ec;
+  color: #2d6a3e;
+}
+
+.sunlight-verification.failed {
+  background: #fdecea;
+  color: #a52a22;
+}
+
+.sunlight-verification.review {
+  background: #eef3f8;
+  color: #3a6ea5;
+}
+
+.sunlight-map-link {
+  margin-top: 8px;
+  background: none;
+  border: none;
+  color: #3a6ea5;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+}
+
+.sunlight-table {
+  width: 100%;
+  margin-top: 10px;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.sunlight-table th,
+.sunlight-table td {
+  border: 1px solid #e0d9ca;
+  padding: 4px 6px;
+  text-align: left;
+}
+
+.sunlight-table th {
+  background: #efe8da;
+  font-weight: 600;
+}
+
+.viewer-tabs {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid #d8d2c4;
+}
+
+.viewer-tabs button {
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #6b6459;
+  cursor: pointer;
+}
+
+.viewer-tabs button.active {
+  background: #3a6ea5;
+  color: #fff;
+}
+
+.viewer-tabs button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.sunlight-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: rgba(255, 255, 255, 0.92);
+  padding: 10px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #3a3a3a;
+  border: 1px solid #d8d2c4;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  min-width: 140px;
+}
+
+.sunlight-legend-title {
+  font-weight: 600;
+  margin-bottom: 8px;
+  font-size: 11px;
+  color: #6b6459;
+}
+
+.sunlight-legend-bar {
+  height: 12px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.sunlight-legend-bar--continuous {
+  display: block;
+}
+
+.sunlight-legend-ticks {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px;
+  color: #6b6459;
+}
+
+.sunlight-legend-note {
+  margin-top: 6px;
+  font-size: 10px;
+  color: #6b6459;
+}
+
+.sunlight-legend-engine {
+  margin-top: 6px;
+  font-size: 9px;
+  color: #8a8378;
+}
+
+.viewer-sunlight-empty {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(255, 255, 255, 0.9);
+  padding: 12px 16px;
+  border-radius: 8px;
+  border: 1px dashed #d8d2c4;
+  font-size: 13px;
+  color: #6b6459;
+  pointer-events: none;
+}

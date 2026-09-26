@@ -1,0 +1,6 @@
+ladybug-core>=0.43.0
+honeybee-core>=1.58.0
+honeybee-radiance>=1.66.0
+setuptools>=70.0.0
+# GH「HB Direct Sun Hours」：pip install lbt-recipes（见 README）
+lbt-recipes>=0.29.0

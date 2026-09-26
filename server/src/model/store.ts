@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { SpaceModel } from '@sdd/shared';
+import type { SpaceModel, SunlightConfig } from '@sdd/shared';
+import { parseSunlightConfig } from '@sdd/shared';
 import { workspacesDir } from '../config';
 import { validateStoredDesign } from './designValidity';
 
@@ -132,4 +133,78 @@ export function saveDesign(
   fs.renameSync(tmp, file);
 
   return { revisionId };
+}
+
+export function loadSunlightConfig(
+  sessionId: string,
+  revisionId: string,
+): { ok: true; config: SunlightConfig } | { ok: false; errors: string[] } | null {
+  const file = path.join(designsDir(sessionId), revisionId, 'sunlight.json');
+  if (!fs.existsSync(file)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const parsed = parseSunlightConfig(raw);
+    if (!parsed.ok) return { ok: false, errors: parsed.errors };
+    return { ok: true, config: parsed.config };
+  } catch {
+    return { ok: false, errors: ['sunlight.json 无法解析'] };
+  }
+}
+
+export function saveSunlightConfig(
+  sessionId: string,
+  revisionId: string,
+  raw: unknown,
+): { ok: true } | { ok: false; errors: string[] } {
+  const parsed = parseSunlightConfig(raw);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  const dir = path.join(designsDir(sessionId), revisionId);
+  if (!fs.existsSync(path.join(dir, 'model.json'))) {
+    return { ok: false, errors: [`方案不存在: ${revisionId}`] };
+  }
+  const file = path.join(dir, 'sunlight.json');
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(parsed.config, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+  return { ok: true };
+}
+
+function writeModelJson(sessionId: string, revisionId: string, model: SpaceModel): void {
+  const file = path.join(designsDir(sessionId), revisionId, 'model.json');
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(model, null, 2));
+  fs.renameSync(tmp, file);
+}
+
+export interface DesignFloorPatch {
+  elevation: number;
+  height: number;
+}
+
+/** 就地更新本版 model.json 的楼层标高/层高（供日照等分析使用，不新建 revision） */
+export function updateDesignFloor(
+  sessionId: string,
+  revisionId: string,
+  patch: DesignFloorPatch,
+): { ok: true } | { ok: false; errors: string[] } {
+  const { elevation, height } = patch;
+  if (!Number.isFinite(elevation)) {
+    return { ok: false, errors: ['floor.elevation 须为有限数值'] };
+  }
+  if (!Number.isFinite(height) || height <= 0) {
+    return { ok: false, errors: ['floor.height 须为大于 0 的有限数值'] };
+  }
+  const model = loadDesign(sessionId, revisionId);
+  if (!model) {
+    return { ok: false, errors: [`方案不存在: ${revisionId}`] };
+  }
+  const next = structuredClone(model);
+  next.floor.elevation = elevation;
+  next.floor.height = height;
+  const validation = validateStoredDesign(next);
+  if (!validation.valid) {
+    return { ok: false, errors: validation.errors };
+  }
+  writeModelJson(sessionId, revisionId, next);
+  return { ok: true };
 }

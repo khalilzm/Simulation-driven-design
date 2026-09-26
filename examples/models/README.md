@@ -2,6 +2,8 @@
 
 职责：存放示例 `model.json`，覆盖最小对象集。
 
+- `sunlight-demo-pass.json`：与 Web「加载示例方案」同户型（约 100㎡ 两室两厅 + 阳台），供日照达标演示。
+
 对应文档：[架构 §6 轻量空间模型](../docs/architecture.md)。
 
 ## 对象最小内容

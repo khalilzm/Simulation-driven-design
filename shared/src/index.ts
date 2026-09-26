@@ -6,3 +6,4 @@ export * from './spaceUsage';
 export * from './polygonGeometry';
 export * from './wallStrip';
 export * from './wallOpenings';
+export * from './sunlight';

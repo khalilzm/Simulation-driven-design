@@ -1,0 +1,25 @@
+{
+  "splits": [],
+  "allocations": [
+    {
+      "id": "space-1",
+      "usage": "主卧",
+      "enclosed": true,
+      "regionIds": ["r1"],
+      "targetArea": 54,
+      "minArea": 54
+    },
+    {
+      "id": "space-2",
+      "usage": "客厅",
+      "enclosed": false,
+      "regionIds": ["r2"],
+      "targetArea": 54
+    }
+  ],
+  "assumptions": [
+    "未提供窗位与朝向，假定主要采光面为北侧外墙（y=9）及西、东向段墙，日照深化时再校核",
+    "原卧室在 r2 最差测点 0h、未达主卧 ≥2h；草案将主卧整区置于 r1，客厅改为开敞占用 r2，门位 opening-1 仍位于两区交界"
+  ],
+  "unmetRequirements": []
+}

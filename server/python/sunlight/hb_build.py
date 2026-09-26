@@ -1,0 +1,129 @@
+"""由 model.json 构建 Honeybee Model 与 Ladybug/Honeybee 传感器网格。"""
+
+from __future__ import annotations
+
+import math
+from typing import Any, Dict, List, Tuple
+
+from honeybee.model import Model
+from honeybee.shade import Shade
+from honeybee_radiance.sensorgrid import SensorGrid
+from ladybug_geometry.geometry3d.face import Face3D
+from ladybug_geometry.geometry3d.pointvector import Point3D, Vector3D
+
+
+def _ring_to_face3d(ring: List[List[float]], z: float) -> Face3D:
+    pts = [Point3D(float(p[0]), float(p[1]), z) for p in ring[:-1] if len(p) >= 2]
+    if len(pts) < 3:
+        raise ValueError("多边形顶点不足")
+    return Face3D(pts)
+
+
+def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> List[Shade]:
+    window_ops = {w["openingId"] for w in model.get("windows", [])}
+    shades: List[Shade] = []
+    for wall in model.get("walls", []):
+        pts = wall["geometry"]["points"]
+        wh = float(wall.get("height", floor_h))
+        z0 = elevation
+        z1 = elevation + wh
+        openings = [
+            op
+            for op in model.get("openings", [])
+            if op["hostWallId"] == wall["id"] and op.get("id") not in window_ops
+        ]
+        win_ops = [
+            op for op in model.get("openings", []) if op["hostWallId"] == wall["id"] and op.get("id") in window_ops
+        ]
+        cumulative = 0.0
+        for i in range(len(pts) - 1):
+            x0, y0 = float(pts[i][0]), float(pts[i][1])
+            x1, y1 = float(pts[i + 1][0]), float(pts[i + 1][1])
+            seg_len = math.hypot(x1 - x0, y1 - y0)
+            if seg_len < 1e-6:
+                continue
+            opaque = [(0.0, seg_len)]
+            for op in win_ops:
+                pos = float(op["position"]) - cumulative
+                w = float(op["width"])
+                if pos + w < 0 or pos > seg_len:
+                    continue
+                a = max(0.0, pos)
+                b = min(seg_len, pos + w)
+                opaque = _subtract_interval(opaque, a, b)
+            cumulative += seg_len
+            for a, b in opaque:
+                if b - a < 1e-6:
+                    continue
+                t0, t1 = a / seg_len, b / seg_len
+                q0 = (x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, z0)
+                q1 = (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, z0)
+                q2 = (q1[0], q1[1], z1)
+                q3 = (q0[0], q0[1], z1)
+                face = Face3D([Point3D(*q0), Point3D(*q1), Point3D(*q2), Point3D(*q3)])
+                shades.append(Shade(f"shade-{wall['id']}-{len(shades)}", face))
+    for item in model.get("externalContext", []):
+        pts = item.get("geometry", {}).get("points", [])
+        for i in range(len(pts) - 1):
+            x0, y0 = float(pts[i][0]), float(pts[i][1])
+            x1, y1 = float(pts[i + 1][0]), float(pts[i + 1][1])
+            face = Face3D(
+                [
+                    Point3D(x0, y0, elevation),
+                    Point3D(x1, y1, elevation),
+                    Point3D(x1, y1, elevation + floor_h),
+                    Point3D(x0, y0, elevation + floor_h),
+                ]
+            )
+            shades.append(Shade(f"ctx-{len(shades)}", face))
+    return shades
+
+
+def _subtract_interval(segments: List[Tuple[float, float]], a: float, b: float) -> List[Tuple[float, float]]:
+    out: List[Tuple[float, float]] = []
+    for s0, s1 in segments:
+        if b <= s0 or a >= s1:
+            out.append((s0, s1))
+            continue
+        if a > s0:
+            out.append((s0, a))
+        if b < s1:
+            out.append((b, s1))
+    return out
+
+
+def build_honeybee_model(model: Dict[str, Any], config: Dict[str, Any]) -> Tuple[Model, List[SensorGrid]]:
+    floor = model["floor"]
+    elevation = float(floor.get("elevation", 0))
+    floor_h = float(floor.get("height", 3))
+    spacing = float(config["sensors"]["gridSpacing"])
+    ref_h = float(config["sensors"]["referenceHeightAboveFloor"])
+    sensor_z = elevation + ref_h
+
+    grids: List[SensorGrid] = []
+    for space in model.get("spaces", []):
+        ring = space["boundary"]
+        sensor_face = _ring_to_face3d(ring, sensor_z)
+        try:
+            grid = SensorGrid.from_face3d(
+                f"grid-{space['id']}",
+                [sensor_face],
+                spacing,
+                None,
+                0,
+                False,
+            )
+            grid.room_identifier = space["id"]
+            grids.append(grid)
+        except AssertionError:
+            continue
+
+    shades = _wall_shades(model, elevation, floor_h)
+    if floor.get("topObstruction", False):
+        top = _ring_to_face3d(floor["boundary"], elevation + floor_h)
+        shades.append(Shade("roof-slab", top))
+
+    hb = Model(model["model"]["revisionId"], [], orphaned_shades=shades)
+    for g in grids:
+        hb.properties.radiance.add_sensor_grid(g)
+    return hb, grids

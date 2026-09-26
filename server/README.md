@@ -14,6 +14,8 @@
 | `sessions/` | 会话文件持久化与恢复 | M0 骨架 |
 | `files/` | DXF 上传登记、artifact 受控访问 | 规划（M1） |
 | `browser-bridge/` | handoff 读取、任务记录、结果回传校验与自动续跑 | 规划（M3） |
+| `python/sunlight/` | Ladybug 日照引擎（Node 子进程调用） | 已实现 |
+| `src/sunlight/` | `POST /api/sunlight/run`、`GET /api/sunlight/check` | 已实现 |
 
 ## HTTP 接口
 

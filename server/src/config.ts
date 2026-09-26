@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -28,7 +29,57 @@ export interface AppConfig {
   model: string;
   cursorApiKey: string;
   cursorModel: string;
+  /** 日照 Python 解释器，默认 python3 */
+  sunlightPython: string;
+  /** 为 true 时优先使用 Honeybee Radiance direct-sun-hours（需本机 Radiance） */
+  sunlightUseRadiance: boolean;
+  /** Radiance 可执行目录（rtrace/oconv）；子进程 PATH 前置 */
+  sunlightRadianceBin: string;
 }
+
+const bundledRadianceBin = path.join(
+  repoRoot,
+  'server',
+  'python',
+  'sunlight',
+  'vendor',
+  'radiance',
+  'radiance',
+  'bin',
+);
+
+function resolveSunlightRadianceBin(): string {
+  const fromEnv = process.env.SDD_SUNLIGHT_RADIANCE_BIN?.trim();
+  if (fromEnv) {
+    return path.isAbsolute(fromEnv) ? fromEnv : path.resolve(serverDir, fromEnv);
+  }
+  if (fs.existsSync(path.join(bundledRadianceBin, 'rtrace'))) {
+    return bundledRadianceBin;
+  }
+  return '';
+}
+
+const defaultSunlightVenvPython = path.join(serverDir, 'python', 'sunlight', '.venv', 'bin', 'python3');
+
+function resolveSunlightPython(): string {
+  const fromEnv = process.env.SDD_SUNLIGHT_PYTHON?.trim();
+  if (fromEnv) return fromEnv;
+  if (fs.existsSync(defaultSunlightVenvPython)) return defaultSunlightVenvPython;
+  return 'python3';
+}
+
+function resolveSunlightUseRadiance(radianceBin: string): boolean {
+  const flag = process.env.SDD_SUNLIGHT_USE_RADIANCE?.trim();
+  if (flag === '0') return false;
+  if (flag === '1') return true;
+  // 仓库内已放置 Radiance + venv 时默认与 GH「HB Direct Sun Hours」一致
+  return Boolean(radianceBin) && fs.existsSync(defaultSunlightVenvPython);
+}
+
+export { repoRoot };
+
+const sunlightRadianceBin = resolveSunlightRadianceBin();
+const sunlightUseRadiance = resolveSunlightUseRadiance(sunlightRadianceBin);
 
 export const config: AppConfig = {
   port: Number(process.env.PORT ?? 4317),
@@ -37,7 +88,32 @@ export const config: AppConfig = {
   model: process.env.MODEL ?? '',
   cursorApiKey: process.env.CURSOR_API_KEY ?? '',
   cursorModel: process.env.CURSOR_MODEL ?? 'composer-2.5',
+  sunlightPython: resolveSunlightPython(),
+  sunlightRadianceBin,
+  sunlightUseRadiance,
 };
+
+/** Node 调用日照 Python 时的环境（Radiance PATH + recipe 开关） */
+export function sunlightProcessEnv(): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env };
+  if (config.sunlightUseRadiance) {
+    env.SDD_SUNLIGHT_USE_RADIANCE = '1';
+  }
+  if (config.sunlightRadianceBin) {
+    const radianceHome = path.dirname(config.sunlightRadianceBin);
+    env.PATH = `${config.sunlightRadianceBin}${path.delimiter}${env.PATH ?? ''}`;
+    env.BINPATH = config.sunlightRadianceBin;
+    env.SDD_RADIANCE_PATH = radianceHome;
+    env.RAYPATH = path.join(radianceHome, 'lib');
+  }
+  return env;
+}
+
+export const sunlightEngineId = sunlightUseRadiance
+  ? 'lbt-direct-sun-hours@1'
+  : 'ladybug-lb-direct-sun-hours@2';
+
+export const sunlightRunnerScript = path.join(repoRoot, 'server', 'python', 'sunlight', 'sdd_run.py');
 
 export const workspacesDir = process.env.WORKSPACES_DIR
   ? path.resolve(process.env.WORKSPACES_DIR)

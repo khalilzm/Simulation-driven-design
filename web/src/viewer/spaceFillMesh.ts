@@ -26,11 +26,15 @@ export function addSpaceFillMesh(
     opacity: fill.opacity,
     transparent: fill.opacity < 1,
     depthWrite,
+    depthTest: true,
     side: DoubleSide,
+    // 与图例 CSS 色一致，避免 tone mapping 把 #002cf3 等拉偏
+    toneMapped: false,
   });
 
   const mesh = new GMesh(geometry, material);
-  const componentId = fill.spaceId ? `space-fill-${fill.spaceId}` : undefined;
+  const componentId =
+    fill.meshId ?? (fill.spaceId ? `space-fill-${fill.spaceId}` : undefined);
   overlays.add(viewer, mesh, componentId);
   return mesh;
 }

@@ -1,6 +1,6 @@
-# web/simulation/sunlight — 日照 Worker
+# web/simulation/sunlight — 日照（已迁至服务端 Python）
 
-职责：在 Web Worker 内计算给定时段内的**潜在直射日照时长**，非照度、太阳辐射能量、全年采光或实际天气观测日照。
+日照计算由 Express 调用 `server/python/sunlight`（Ladybug 太阳位置 + 射线遮挡）。本目录保留为历史路径说明。
 
 对应文档：[架构 §7](../docs/architecture.md)、[roadmap M2](../../docs/roadmap.md)。
 

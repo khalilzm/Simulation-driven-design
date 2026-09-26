@@ -42,3 +42,21 @@ export function triangulatePolygonEarcut(
 
   return { positions, indices: new Uint32Array(triIndices) };
 }
+
+function triangleMesh(pts: [number, number][], z: number): IndexedPolygonMesh {
+  const positions = new Float32Array(9);
+  for (let i = 0; i < 3; i++) {
+    positions[i * 3] = pts[i][0];
+    positions[i * 3 + 1] = pts[i][1];
+    positions[i * 3 + 2] = z;
+  }
+  return { positions, indices: new Uint32Array([0, 1, 2]) };
+}
+
+/** Honeybee 传感器面：三角或任意平面多边形（无需重复闭合点） */
+export function meshFromPlanarFace(pts: [number, number][], z = 0.02): IndexedPolygonMesh | null {
+  if (pts.length < 3 || !Number.isFinite(z)) return null;
+  if (pts.length === 3) return triangleMesh(pts, z);
+  const closed: [number, number][] = [...pts, pts[0]];
+  return triangulatePolygonEarcut(closed, z);
+}

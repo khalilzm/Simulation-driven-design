@@ -43,8 +43,8 @@ export interface Capability {
 export const CAPABILITIES: Capability[] = [
   {
     id: 'sunlight',
-    enabled: false,
-    executor: 'browser',
+    enabled: true,
+    executor: 'engine',
     input: '地点、时序、开口、测点',
     output: '日照时长与可见性',
   },

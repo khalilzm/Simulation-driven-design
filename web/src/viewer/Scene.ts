@@ -13,6 +13,7 @@ import {
   modelToSpaceFills,
   modelToWallFills,
 } from './modelRender';
+import { sunlightGridsToFills } from './sunlightMeshRender';
 import { addSpaceFillMesh } from './spaceFillMesh';
 import { SpaceOverlayRegistry } from './spaceOverlay';
 
@@ -104,19 +105,31 @@ export function createScene(container: HTMLDivElement): ViewerScene {
         added = true;
       }
     } else if (content.kind === 'model') {
-      for (const fill of modelToSpaceFills(content.model)) {
-        addSpaceFillMesh(viewer, fill, overlays);
-        added = true;
+      const useSunlight = content.view === 'sunlight' && content.sunlight?.status === 'completed';
+      const sun = content.sunlight;
+      const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun) : [];
+      if (useSunlight && gridFills.length) {
+        for (const fill of gridFills) {
+          addSpaceFillMesh(viewer, fill, overlays);
+          added = true;
+        }
+      } else if (!useSunlight) {
+        for (const fill of modelToSpaceFills(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays);
+          added = true;
+        }
       }
-      for (const fill of modelToWallFills(content.model)) {
-        addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
-        added = true;
+      if (!useSunlight) {
+        for (const fill of modelToWallFills(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
+          added = true;
+        }
+        for (const g of modelToLineGroups(content.model)) {
+          viewer.addLines({ positions: g.positions, material: { color: g.color } });
+          added = true;
+        }
+        addSpaceLabels(viewer, content.model, overlays);
       }
-      for (const g of modelToLineGroups(content.model)) {
-        viewer.addLines({ positions: g.positions, material: { color: g.color } });
-        added = true;
-      }
-      addSpaceLabels(viewer, content.model, overlays);
     }
     if (added) viewer.fitBounds();
   };
