@@ -37,7 +37,7 @@ export interface SunlightConfigDraft {
   floorHeight: number;
 }
 
-export function configToDraft(config: SunlightConfig): SunlightConfigDraft {
+export function configToDraft(config: SunlightConfig): Omit<SunlightConfigDraft, 'floorElevation' | 'floorHeight'> {
   return {
     latitude: config.location.latitude,
     longitude: config.location.longitude,

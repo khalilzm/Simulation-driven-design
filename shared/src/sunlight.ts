@@ -18,6 +18,7 @@ export interface SunlightSensors {
 }
 
 export interface SunlightTarget {
+  /** 物理空间 ID 或稳定 allocationId；逻辑功能 ID 包含其所有分片。 */
   spaceIds: string[];
   minHours: number;
 }
@@ -40,12 +41,21 @@ export type SunlightVerificationStatus = 'passed' | 'failed' | 'needs_review';
 
 export interface SunlightSpaceMetrics {
   spaceId: string;
+  allocationId?: string;
   sensorCount: number;
+  /** 网格代表面积之和（平方米），不一定覆盖空间全部边缘。 */
+  sampledArea?: number;
+  /** 按网格代表面积加权的平均时长。 */
   meanHours: number;
   minHours: number;
   maxHours: number;
-  /** 测点中累计时长 >= 对应 target.minHours 的比例；无 target 时为 null */
+  /** 目标覆盖网格中达标面积的比例；重叠目标采用最高 minHours，无目标时为 null。 */
   targetMetRatio: number | null;
+}
+
+export interface SunlightAllocationMetrics extends Omit<SunlightSpaceMetrics, 'spaceId' | 'allocationId'> {
+  allocationId: string;
+  spaceIds: string[];
 }
 
 export interface SunlightTargetCheck {
@@ -54,6 +64,7 @@ export interface SunlightTargetCheck {
   met: boolean;
   worstSpaceId: string | null;
   worstMinHours: number | null;
+  missingSpaceIds?: string[];
 }
 
 export interface SunlightSensorGridMesh {
@@ -73,9 +84,12 @@ export interface SunlightResult {
   metrics: {
     unit: 'hour';
     sensorCount: number;
+    /** 所有目标覆盖网格的达标面积 / 代表面积，去重计数；缺失目标测点时为 null。 */
     targetAreaRatio: number | null;
   };
   spaces: SunlightSpaceMetrics[];
+  /** 按稳定逻辑功能汇总；spaces 保留物理分片，以兼容平面显示。 */
+  allocations?: SunlightAllocationMetrics[];
   targets?: SunlightTargetCheck[];
   /** Honeybee SensorGrid 网格与逐面累计直射小时（Ladybug 色标） */
   grids?: SunlightSensorGridMesh[];
@@ -110,13 +124,22 @@ export function parseSunlightConfig(raw: unknown): { ok: true; config: SunlightC
     errors.push('location 必填');
   } else {
     const l = loc as Record<string, unknown>;
-    if (typeof l.latitude !== 'number' || l.latitude < -90 || l.latitude > 90) errors.push('location.latitude 无效');
-    if (typeof l.longitude !== 'number' || l.longitude < -180 || l.longitude > 180) errors.push('location.longitude 无效');
+    if (typeof l.latitude !== 'number' || !Number.isFinite(l.latitude) || l.latitude < -90 || l.latitude > 90) errors.push('location.latitude 无效');
+    if (typeof l.longitude !== 'number' || !Number.isFinite(l.longitude) || l.longitude < -180 || l.longitude > 180) errors.push('location.longitude 无效');
     if (typeof l.timezone !== 'string' || !l.timezone.trim()) errors.push('location.timezone 必填');
+    else {
+      try { new Intl.DateTimeFormat('en', { timeZone: l.timezone.trim() }); }
+      catch { errors.push('location.timezone 须为有效的 IANA 时区'); }
+    }
   }
 
   if (typeof o.analysisDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(o.analysisDate)) {
     errors.push('analysisDate 须为 YYYY-MM-DD');
+  } else {
+    const date = new Date(`${o.analysisDate}T00:00:00.000Z`);
+    if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() < 1 || date.toISOString().slice(0, 10) !== o.analysisDate) {
+      errors.push('analysisDate 须为有效日期');
+    }
   }
 
   const range = o.localTimeRange;
@@ -132,8 +155,8 @@ export function parseSunlightConfig(raw: unknown): { ok: true; config: SunlightC
   if (typeof o.northDegrees !== 'number' || !Number.isFinite(o.northDegrees)) {
     errors.push('northDegrees 须为数字');
   }
-  if (typeof o.timestepMinutes !== 'number' || o.timestepMinutes <= 0 || o.timestepMinutes > 120) {
-    errors.push('timestepMinutes 须在 (0, 120]');
+  if (typeof o.timestepMinutes !== 'number' || !Number.isInteger(o.timestepMinutes) || o.timestepMinutes < 1 || o.timestepMinutes > 120) {
+    errors.push('timestepMinutes 须为 1～120 的整数');
   }
 
   const sensors = o.sensors;
@@ -141,10 +164,10 @@ export function parseSunlightConfig(raw: unknown): { ok: true; config: SunlightC
     errors.push('sensors 必填');
   } else {
     const s = sensors as Record<string, unknown>;
-    if (typeof s.referenceHeightAboveFloor !== 'number' || s.referenceHeightAboveFloor < 0) {
+    if (typeof s.referenceHeightAboveFloor !== 'number' || !Number.isFinite(s.referenceHeightAboveFloor) || s.referenceHeightAboveFloor < 0) {
       errors.push('sensors.referenceHeightAboveFloor 须为非负数');
     }
-    if (typeof s.gridSpacing !== 'number' || s.gridSpacing <= 0) {
+    if (typeof s.gridSpacing !== 'number' || !Number.isFinite(s.gridSpacing) || s.gridSpacing <= 0) {
       errors.push('sensors.gridSpacing 须为正数');
     }
   }
@@ -160,14 +183,16 @@ export function parseSunlightConfig(raw: unknown): { ok: true; config: SunlightC
           continue;
         }
         const tr = t as Record<string, unknown>;
-        if (!Array.isArray(tr.spaceIds) || tr.spaceIds.some((id) => typeof id !== 'string')) {
-          errors.push(`targets[${i}].spaceIds 须为字符串数组`);
+        const idsValid = Array.isArray(tr.spaceIds) && tr.spaceIds.length > 0
+          && tr.spaceIds.every((id) => typeof id === 'string' && id.trim());
+        if (!idsValid) {
+          errors.push(`targets[${i}].spaceIds 须为非空空间 ID 数组`);
         }
-        if (typeof tr.minHours !== 'number' || tr.minHours < 0) {
+        if (typeof tr.minHours !== 'number' || !Number.isFinite(tr.minHours) || tr.minHours < 0) {
           errors.push(`targets[${i}].minHours 须为非负数`);
-        } else {
+        } else if (idsValid) {
           targets.push({
-            spaceIds: (tr.spaceIds as string[]).map((id) => id.trim()).filter(Boolean),
+            spaceIds: [...new Set((tr.spaceIds as string[]).map((id) => id.trim()))],
             minHours: tr.minHours,
           });
         }
@@ -187,7 +212,7 @@ export function parseSunlightConfig(raw: unknown): { ok: true; config: SunlightC
       timezone: String(l.timezone).trim(),
     },
     analysisDate: o.analysisDate as string,
-    localTimeRange: [String((range as unknown[])[0]), String((range as unknown[])[1])],
+    localTimeRange: [String((range as unknown[])[0]).trim(), String((range as unknown[])[1]).trim()],
     northDegrees: o.northDegrees as number,
     timestepMinutes: o.timestepMinutes as number,
     sensors: {

@@ -2,25 +2,19 @@
 
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Tuple
 
 from honeybee.model import Model
-from honeybee_radiance.sensorgrid import SensorGrid
-from ladybug.dt import DateTime
-from ladybug.location import Location
-from ladybug.sunpath import Sunpath
-from ladybug_geometry.geometry3d.pointvector import Point3D
-
-from grid_pack import make_legend, pack_grids_with_hours
+from grid_pack import make_legend, pack_grids_with_hours, grid_sensor_areas
 from hb_build import build_honeybee_model
+from sunlight_metrics import package_results
+from sunlight_time import sun_intervals
 
 Vec3 = Tuple[float, float, float]
 Triangle = Tuple[Vec3, Vec3, Vec3]
 
 # LB Direct Sun Hours 同款太阳/遮挡逻辑（无 Radiance）；着色走 Ladybug Legend
-ENGINE_ID = "ladybug-lb-direct-sun-hours@2"
+ENGINE_ID = "ladybug-lb-direct-sun-hours@3"
 
 
 def _shade_triangles(hb: Model) -> List[Triangle]:
@@ -75,26 +69,15 @@ def _ray_triangle(origin: Vec3, direction: Vec3, tri: Triangle, eps: float = 1e-
     return t
 
 
-def _parse_local_range(date_str: str, start_hm: str, end_hm: str) -> Tuple[datetime, datetime]:
-    y, m, d = (int(x) for x in date_str.split("-"))
-    sh, sm = (int(x) for x in start_hm.split(":"))
-    eh, em = (int(x) for x in end_hm.split(":"))
-    return datetime(y, m, d, sh, sm), datetime(y, m, d, eh, em)
-
-
-def _sun_direction(sunpath: Sunpath, dt: DateTime) -> Vec3 | None:
-    sun = sunpath.calculate_sun_from_date_time(dt)
-    if sun.is_during_day is False or sun.altitude <= 0:
-        return None
-    vec = sun.sun_vector
-    return (float(vec.x), float(vec.y), float(vec.z))
-
-
 def run_honeybee_direct_sun(
     model: Dict[str, Any],
     config: Dict[str, Any],
     output_dir: Any = None,
 ) -> Dict[str, Any]:
+    try:
+        intervals = list(sun_intervals(config))
+    except ValueError as error:
+        return _fail(str(error))
     hb, grids = build_honeybee_model(model, config)
     if not grids:
         return _fail("Honeybee 未生成任何 SensorGrid")
@@ -106,46 +89,22 @@ def run_honeybee_direct_sun(
             all_sensors.append((sid, grid.identifier, sens.pos))
 
     triangles = _shade_triangles(hb)
-    loc_cfg = config["location"]
-    location = Location(
-        latitude=float(loc_cfg["latitude"]),
-        longitude=float(loc_cfg["longitude"]),
-        time_zone=0,
-    )
-    north = float(config.get("northDegrees", 0))
-    sunpath = Sunpath.from_location(location, north_angle=north)
-
-    start_local, end_local = _parse_local_range(
-        config["analysisDate"],
-        config["localTimeRange"][0],
-        config["localTimeRange"][1],
-    )
-    step_min = int(config["timestepMinutes"])
-    step = timedelta(minutes=step_min)
-
     hours: List[float] = [0.0] * len(all_sensors)
-    t = start_local
-    while t < end_local:
-        dt = DateTime(t.month, t.day, t.hour, t.minute)
-        sun_dir = _sun_direction(sunpath, dt)
+    for sun_dir, duration_hours in intervals:
         if sun_dir is not None:
             for i, (_sid, _gid, pos) in enumerate(all_sensors):
                 origin = pos
                 blocked = any(_ray_triangle(origin, sun_dir, tri) is not None for tri in triangles)
                 if not blocked:
-                    hours[i] += step_min / 60.0
-        t += step
+                    hours[i] += duration_hours
 
     legend, legend_par = make_legend(config)
     grid_exports = pack_grids_with_hours(grids, hours, legend_par)
 
-    from ray_engine import _package_results  # 空间汇总与 targets 校验
-
-    sensor_points = [
-        type("S", (), {"space_id": sid, "x": pos[0], "y": pos[1], "z": pos[2]})()
-        for sid, _gid, pos in all_sensors
-    ]
-    result = _package_results(sensor_points, hours, config, ENGINE_ID)
+    result = package_results(
+        [sid for sid, _gid, _pos in all_sensors], hours, grid_sensor_areas(grids, model),
+        config, ENGINE_ID, model.get("spaces", []),
+    )
     result["legend"] = legend
     result["grids"] = grid_exports
     result["verification"]["checks"].insert(

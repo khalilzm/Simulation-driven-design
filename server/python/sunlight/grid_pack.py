@@ -10,6 +10,17 @@ from ladybug.legend import LegendParameters
 from ladybug_legend import legend_parameters_direct_sun, value_colors_hex
 
 
+def grid_sensor_areas(grids: Sequence[SensorGrid], model: Dict[str, Any]) -> List[float]:
+    """One sensor per mesh face; return its actual face area in square metres."""
+    scale = 0.001 if model.get("model", {}).get("units") == "mm" else 1.0
+    areas = []
+    for grid in grids:
+        if grid.mesh is None or len(grid.mesh.faces) != len(grid.sensors):
+            raise ValueError(f"SensorGrid {grid.identifier} 的网格面与传感器不一一对应")
+        areas.extend(area * scale ** 2 for area in grid.mesh.face_areas)
+    return areas
+
+
 def _export_grid_mesh(grid: SensorGrid) -> Dict[str, Any]:
     mesh = grid.mesh
     if mesh is None:
@@ -29,6 +40,8 @@ def pack_grids_with_hours(
 ) -> List[Dict[str, Any]]:
     """sensor_hours 顺序与 grids 内 sensors 遍历顺序一致。"""
     out: List[Dict[str, Any]] = []
+    if sum(len(grid.sensors) for grid in grids) != len(sensor_hours):
+        raise ValueError("传感器与日照时长数量不一致")
     idx = 0
     for grid in grids:
         n_sens = len(grid.sensors)
@@ -36,13 +49,9 @@ def pack_grids_with_hours(
         idx += n_sens
         gex = _export_grid_mesh(grid)
         n_faces = len(gex["faces"])
-        if n_faces == len(sens_h):
-            face_hours = sens_h
-        elif len(sens_h) == 0:
-            face_hours = [0.0] * n_faces
-        else:
-            # 面数与传感器数不一致时，按面索引映射到最近传感器（与 mesh 细分一致）
-            face_hours = [sens_h[min(fi, len(sens_h) - 1)] for fi in range(n_faces)]
+        if n_faces != len(sens_h):
+            raise ValueError(f"SensorGrid {grid.identifier} 的网格面与传感器不一一对应")
+        face_hours = sens_h
         gex["hours"] = face_hours
         gex["faceColors"] = value_colors_hex(face_hours, legend_par)
         out.append(gex)

@@ -110,8 +110,8 @@ export function sunlightProcessEnv(): NodeJS.ProcessEnv {
 }
 
 export const sunlightEngineId = sunlightUseRadiance
-  ? 'lbt-direct-sun-hours@1'
-  : 'ladybug-lb-direct-sun-hours@2';
+  ? 'lbt-direct-sun-hours@2'
+  : 'ladybug-lb-direct-sun-hours@3';
 
 export const sunlightRunnerScript = path.join(repoRoot, 'server', 'python', 'sunlight', 'sdd_run.py');
 

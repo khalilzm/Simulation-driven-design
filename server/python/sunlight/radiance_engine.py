@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from hb_build import build_honeybee_model
-from grid_pack import make_legend, pack_grids_with_hours, target_min_hours
-from ray_engine import _package_results
+from grid_pack import make_legend, pack_grids_with_hours, grid_sensor_areas
+from sunlight_metrics import package_results
 from wea_from_config import build_wea
 
-ENGINE_ID = "lbt-direct-sun-hours@1"
+ENGINE_ID = "lbt-direct-sun-hours@2"
 
 
 def _radiance_on_path() -> bool:
@@ -115,19 +115,10 @@ def run_radiance_recipe(model: Dict[str, Any], config: Dict[str, Any], output_di
     legend, legend_par = make_legend(config)
     grid_exports = pack_grids_with_hours(grids, flat, legend_par)
 
-    def _xyz(pos: Any) -> tuple[float, float, float]:
-        if hasattr(pos, "x"):
-            return float(pos.x), float(pos.y), float(pos.z)
-        return float(pos[0]), float(pos[1]), float(pos[2])
-
-    sensor_points = []
-    for grid in grids:
-        sid = grid.room_identifier or ""
-        for sens in grid.sensors:
-            x, y, z = _xyz(sens.pos)
-            sensor_points.append(type("S", (), {"space_id": sid, "x": x, "y": y, "z": z})())
-
-    result = _package_results(sensor_points, flat, config, ENGINE_ID)
+    result = package_results(
+        [grid.room_identifier or "" for grid in grids for _ in grid.sensors],
+        flat, grid_sensor_areas(grids, model), config, ENGINE_ID, model.get("spaces", []),
+    )
     result["legend"] = legend
     result["grids"] = grid_exports
     result["verification"]["checks"].insert(
