@@ -35,13 +35,13 @@ test('explicitCursorApiKey 空字符串视为未配置', () => {
   process.env.CURSOR_API_KEY = prev;
 });
 
-test('SPACE_DESIGN_ALLOWED_TOOLS 仅允许 edit', () => {
-  assert.deepEqual(SPACE_DESIGN_ALLOWED_TOOLS, ['edit']);
+test('SPACE_DESIGN_ALLOWED_TOOLS 允许 read 与 edit', () => {
+  assert.deepEqual(SPACE_DESIGN_ALLOWED_TOOLS, ['read', 'edit']);
 });
 
 test('buildCursorAgentOptions 限制工具并传入 cwd', () => {
   const options = buildCursorAgentOptions('composer-2.5', '/tmp/ws', 'key-123');
-  assert.deepEqual(options.tools, ['edit']);
+  assert.deepEqual(options.tools, ['read', 'edit']);
   assert.equal(options.local?.cwd, '/tmp/ws');
   assert.equal(options.apiKey, 'key-123');
 });

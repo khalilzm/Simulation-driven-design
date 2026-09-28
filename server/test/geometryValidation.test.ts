@@ -18,7 +18,7 @@ test('buildValidationCorrectionMessage 包含错误与修正指引', () => {
   ]);
   assert.match(msg, /rev-0002/);
   assert.match(msg, /layout\.json/);
-  assert.match(msg, /区域分配或切分/);
+  assert.match(msg, /schemaVersion 2/);
   assert.match(msg, /r1 被重复分配/);
 });
 

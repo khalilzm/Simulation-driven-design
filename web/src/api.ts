@@ -54,7 +54,12 @@ export async function streamChat(
   await streamNdjson(r, onEvent);
 }
 
-export async function uploadDxf(
+export function inputFileUrl(sessionId: string, name: string): string {
+  return `/api/files/${sessionId}/${encodeURIComponent(name)}`;
+}
+
+/** 上传手绘草图到会话 inputs/（PNG/JPEG/WebP） */
+export async function uploadSketch(
   sessionId: string | undefined,
   filename: string,
   contentBase64: string,
@@ -64,9 +69,13 @@ export async function uploadDxf(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sessionId, filename, contentBase64 }),
   });
-  if (!r.ok) throw new Error(`上传失败: ${r.status}`);
-  return r.json();
+  const j = (await r.json().catch(() => ({}))) as { error?: string };
+  if (!r.ok) throw new Error(j.error ?? `上传失败: ${r.status}`);
+  return j as { sessionId: string; file: { name: string; size: number } };
 }
+
+/** @deprecated 使用 uploadSketch */
+export const uploadDxf = uploadSketch;
 
 export async function fetchFileText(sessionId: string, name: string): Promise<string> {
   const r = await fetch(`/api/files/${sessionId}/${encodeURIComponent(name)}`);

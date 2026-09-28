@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import earcut, { deviation } from 'earcut';
-import { polygonGeometryError, type SpaceModel, type Vec2 } from '@sdd/shared';
+import { centerlineWallPolygon, polygonGeometryError, wallSolidPrisms, type SpaceModel, type Vec2, type Wall } from '@sdd/shared';
 import { findBoundaryOutside } from '@sdd/shared';
 import { polygonArea } from '../src/model/geometry';
 import { validateModel } from '../src/model/validate';
-import { modelToSpaceFills, modelToWallFills, modelToLineGroups } from '../../web/src/viewer/modelRender';
-import { triangulatePolygonEarcut } from '../../web/src/viewer/polygonMesh';
+import { modelToSpaceFills, modelToWallFills, modelToLineGroups, modelToDoorMeshes3D, modelToWindowMeshes3D } from '../../web/src/viewer/modelRender';
+import { extrudePolygonPrism, triangulatePolygonEarcut } from '../../web/src/viewer/polygonMesh';
 
 const screenshotFloor: Vec2[] = [
   [0,14.515],[0,1.459],[28.751,1.459],[28.751,0],[32.092,0],[32.092,1.459],
@@ -49,6 +49,59 @@ test('自交办公边界不得进入 Earcut 填充', () => {
   const fills = modelToSpaceFills(model);
   assert.deepEqual(fills.map((f) => f.spaceId), [undefined, 'space-1']);
   assert.ok(validateModel(model).errors.some((e) => e.includes('space-0') && e.includes('自交')));
+});
+
+test('挤出墙体的三角面法线统一朝外（侧面与顶盖同向）', () => {
+  const outline = centerlineWallPolygon([[0, 0], [10, 0]], 0.12)!;
+  const mesh = extrudePolygonPrism([...outline, outline[0]], 0, 3)!;
+  const pos = mesh.positions, idx = mesh.indices;
+  const vertex = (m: number) => [pos[m * 3], pos[m * 3 + 1], pos[m * 3 + 2]] as const;
+  for (let t = 0; t < idx.length; t += 3) {
+    const [a, b, c] = [vertex(idx[t]), vertex(idx[t + 1]), vertex(idx[t + 2])];
+    const [ux, uy, uz] = [b[0] - a[0], b[1] - a[1], b[2] - a[2]];
+    const [vx, vy, vz] = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
+    const n = [uy * vz - uz * vy, uz * vx - ux * vz, ux * vy - uy * vx];
+    const cx = (a[0] + b[0] + c[0]) / 3, cy = (a[1] + b[1] + c[1]) / 3, cz = (a[2] + b[2] + c[2]) / 3;
+    if (cz > 2.5) assert.ok(n[2] > 0, '顶盖法线应朝 +Z');
+    else if (cz < 0.5) assert.ok(n[2] < 0, '底盖法线应朝 -Z');
+    else if (cx < 0.5) assert.ok(n[0] < 0, `x=0 侧面法线应朝 -X，实际 ${n}`);
+    else if (cx > 9.5) assert.ok(n[0] > 0, `x=10 侧面法线应朝 +X，实际 ${n}`);
+    else if (cy > 0) assert.ok(n[1] > 0, `y=+h 侧面法线应朝 +Y，实际 ${n}`);
+    else assert.ok(n[1] < 0, `y=-h 侧面法线应朝 -Y，实际 ${n}`);
+  }
+});
+
+test('3D 墙体按门/窗真实高度做布尔减', () => {
+  const wall: Wall = { id: 'w', geometry: { type: 'polyline', points: [[0, 0], [10, 0]] }, thickness: 0.12, height: 3, fixed: false };
+  const span = (p: { points: Vec2[] }) => Math.hypot(p.points.at(-1)![0] - p.points[0][0], p.points.at(-1)![1] - p.points[0][1]);
+
+  const door = wallSolidPrisms(wall, [{ id: 'door', hostWallId: 'w', position: 5, width: 1, height: 2.1, sillHeight: 0 }]);
+  assert.equal(door.length, 3);
+  const lintel = door.find((p) => Math.abs(p.z0 - 2.1) < 1e-9 && Math.abs(p.z1 - 3) < 1e-9);
+  assert.ok(lintel, '门上方应保留过梁');
+  assert.ok(Math.abs(span(lintel!) - 1) < 1e-9, '过梁宽度应等于门宽');
+
+  const win = wallSolidPrisms(wall, [{ id: 'win', hostWallId: 'w', position: 5, width: 1, height: 1.2, sillHeight: 0.9 }]);
+  assert.equal(win.length, 4);
+  const below = win.find((p) => Math.abs(p.z1 - 0.9) < 1e-9);
+  const above = win.find((p) => Math.abs(p.z0 - 2.1) < 1e-9);
+  assert.ok(below, '窗台下方应保留实体');
+  assert.ok(above, '窗顶上方应保留实体');
+  assert.ok(Math.abs(span(below!) - 1) < 1e-9);
+  assert.ok(Math.abs(span(above!) - 1) < 1e-9);
+});
+
+test('门/窗 3D 网格包含门框、窗框', () => {
+  const model = modelFor(rect(0, 0, 10, 8), [rect(0, 0, 10, 8)]);
+  model.walls = [{ id: 'wall', geometry: { type: 'polyline', points: [[0, 0], [10, 0]] }, thickness: 0.12, height: 3, fixed: false }];
+  model.openings = [
+    { id: 'door-opening', hostWallId: 'wall', position: 2.5, width: 1, height: 2.1 },
+    { id: 'window-opening', hostWallId: 'wall', position: 6.5, width: 1.5, height: 1.2, sillHeight: 0.9 },
+  ];
+  model.doors = [{ id: 'door', openingId: 'door-opening', swing: 'left', analysisProperties: {} }];
+  model.windows = [{ id: 'window', openingId: 'window-opening', analysisProperties: {} }];
+  assert.equal(modelToDoorMeshes3D(model).length, 4, '门扇 + 左右竖框 + 上槛');
+  assert.equal(modelToWindowMeshes3D(model).length, 5, '玻璃 + 左右竖框 + 上下横框');
 });
 
 test('合法凹多边形顺逆时针均保持面积', () => {

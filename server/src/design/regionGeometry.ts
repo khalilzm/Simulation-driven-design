@@ -139,3 +139,5 @@ export function splitRegion(boundary: Vec2[], axis: 'x' | 'y', ratio: number): [
 export function outsideArea(boundary: Vec2[], floor: Vec2[]): number {
   return geometryArea(diff([boundary], [floor]));
 }
+
+export { intersection };

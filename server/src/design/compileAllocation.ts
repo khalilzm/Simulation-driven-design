@@ -2,6 +2,7 @@ import type { SpaceModel, SpaceType, Vec2, Wall } from '@sdd/shared';
 import { polygonGeometryError, pointInOrOnPolygon } from '@sdd/shared';
 import { polygonArea } from '../model/geometry';
 import { applyRegionSplits, type Allocation, type LayoutRegion, type RegionCatalog, type RegionSplit } from './layoutRegions';
+import { appendWalls } from './layoutWalls';
 import { cleanRing, decomposeRegions, geometryArea, outsideArea, segmentOverlap, unionRings } from './regionGeometry';
 
 interface AllocationPlan {
@@ -60,35 +61,6 @@ function connected(regions: LayoutRegion[]): boolean {
   return seen.size === regions.length;
 }
 
-/** 仅增补未被既有墙覆盖的区间；保持门窗宿主墙的 ID 和几何。 */
-function appendWalls(walls: Wall[], rings: Vec2[][], height: number, thickness: number): void {
-  for (const ring of rings) for (let i = 0; i + 1 < ring.length; i++) {
-    const a = ring[i], b = ring[i + 1];
-    const dx = b[0] - a[0], dy = b[1] - a[1], length2 = dx * dx + dy * dy;
-    if (length2 < 1e-14) continue;
-    const position = (p: Vec2) => ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / length2;
-    const covered: [number, number][] = [];
-    for (const wall of walls) for (let j = 0; j + 1 < wall.geometry.points.length; j++) {
-      const overlap = segmentOverlap(a, b, wall.geometry.points[j], wall.geometry.points[j + 1]);
-      if (overlap) covered.push([position(overlap[0]), position(overlap[1])]);
-    }
-    covered.sort((x, y) => x[0] - y[0]);
-    let cursor = 0;
-    const gaps: [number, number][] = [];
-    for (const [start, end] of covered) {
-      if (start > cursor + 1e-8) gaps.push([cursor, start]);
-      cursor = Math.max(cursor, end);
-    }
-    if (cursor < 1 - 1e-8) gaps.push([cursor, 1]);
-    for (const [start, end] of gaps) {
-      const point = (t: number): Vec2 => [a[0] + t * dx, a[1] + t * dy];
-      let n = walls.length + 1;
-      while (walls.some((wall) => wall.id === `layout-wall-${n}`)) n++;
-      walls.push({ id: `layout-wall-${n}`, geometry: { type: 'polyline', points: [point(start), point(end)] }, height, thickness, fixed: false });
-    }
-  }
-}
-
 const PALETTE = ['#A8C8F0', '#98D4B8', '#FFE4A8', '#C8B8E8', '#FFB878', '#88C8E8', '#FFD0A0'];
 
 export function compileAllocation(raw: unknown, catalog: RegionCatalog, revisionId: string, requireFullCoverage = false): {
@@ -125,7 +97,9 @@ export function compileAllocation(raw: unknown, catalog: RegionCatalog, revision
     if (allocation.enclosed && !connected(assigned)) throw new Error(`${allocation.id} 的封闭房间不连通；选择有共边的区域或拆成独立房间`);
     const combined = unionRings(assigned.map((region) => region.boundary));
     const area = geometryArea(combined) / scale ** 2;
-    if (allocation.minArea !== undefined && area + 1e-6 < allocation.minArea) throw new Error(`${allocation.id} 实际 ${area.toFixed(2)} m²，小于要求 ${allocation.minArea} m²；请调整分配`);
+    if (allocation.minArea !== undefined && area + 1e-6 < allocation.minArea) {
+      warnings.push(`${allocation.id} 实际 ${area.toFixed(2)} m²，低于下限 ${allocation.minArea} m²`);
+    }
     if (allocation.targetArea && area < allocation.targetArea * 0.75) warnings.push(`${allocation.usage} 实际 ${area.toFixed(1)} m²，低于目标 ${allocation.targetArea} m²`);
     if (!allocation.enclosed && !connected(assigned)) warnings.push(`${allocation.usage} 分为多个不连通区域`);
     if (allocation.enclosed) {

@@ -42,26 +42,36 @@ def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> Lis
             seg_len = math.hypot(x1 - x0, y1 - y0)
             if seg_len < 1e-6:
                 continue
-            opaque = [(0.0, seg_len)]
+            cuts = []
             for op in win_ops:
                 pos = float(op["position"]) - cumulative
                 w = float(op["width"])
-                if pos + w < 0 or pos > seg_len:
+                a = max(0.0, pos - w / 2)
+                b = min(seg_len, pos + w / 2)
+                sill = float(op.get("sillHeight", 0))
+                bottom = max(0.0, sill)
+                top = min(wh, sill + float(op["height"]))
+                if b <= a or top <= bottom:
                     continue
-                a = max(0.0, pos)
-                b = min(seg_len, pos + w)
-                opaque = _subtract_interval(opaque, a, b)
+                cuts.append((a, b, bottom, top))
             cumulative += seg_len
-            for a, b in opaque:
-                if b - a < 1e-6:
-                    continue
-                t0, t1 = a / seg_len, b / seg_len
-                q0 = (x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, z0)
-                q1 = (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, z0)
-                q2 = (q1[0], q1[1], z1)
-                q3 = (q0[0], q0[1], z1)
-                face = Face3D([Point3D(*q0), Point3D(*q1), Point3D(*q2), Point3D(*q3)])
-                shades.append(Shade(f"shade-{wall['id']}-{len(shades)}", face))
+            # 沿窗底、窗顶分层，保留窗下墙与过梁；每层只扣除该高度的窗洞。
+            levels = sorted({0.0, wh, *(z for _, _, bottom, top in cuts for z in (bottom, top))})
+            for bottom, top in zip(levels, levels[1:]):
+                opaque = [(0.0, seg_len)]
+                for a, b, low, high in cuts:
+                    if low < top and high > bottom:
+                        opaque = _subtract_interval(opaque, a, b)
+                for a, b in opaque:
+                    if b - a < 1e-6:
+                        continue
+                    t0, t1 = a / seg_len, b / seg_len
+                    q0 = (x0 + (x1 - x0) * t0, y0 + (y1 - y0) * t0, z0 + bottom)
+                    q1 = (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, z0 + bottom)
+                    q2 = (q1[0], q1[1], z0 + top)
+                    q3 = (q0[0], q0[1], z0 + top)
+                    face = Face3D([Point3D(*q0), Point3D(*q1), Point3D(*q2), Point3D(*q3)])
+                    shades.append(Shade(f"shade-{wall['id']}-{len(shades)}", face))
     for item in model.get("externalContext", []):
         pts = item.get("geometry", {}).get("points", [])
         for i in range(len(pts) - 1):

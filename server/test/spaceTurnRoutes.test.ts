@@ -13,6 +13,7 @@ import { workspacesDir } from '../src/config';
 import { loadSession } from '../src/sessions/store';
 import { listDesigns } from '../src/model/store';
 import { layoutModel } from './helpers/spaceModel';
+import { v2Layout } from './helpers/v2Layout';
 
 async function request(body: unknown, generate: boolean) {
   const req = Object.assign(new EventEmitter(), { body }) as Request;
@@ -39,12 +40,17 @@ function workspace(t: TestContext) {
   return { sessionId, cwd };
 }
 
-test('两个入口共用服务端 DXF 轮廓及修正流程，生成按钮保存可续跑会话', async (t) => {
+test('两个入口共用服务端轮廓及修正流程，生成按钮保存可续跑会话', async (t) => {
   const inputs: ChatTurnInput[] = [];
   t.mock.method(echoAdapter, 'run', async (input: ChatTurnInput) => {
     inputs.push(input);
-    fs.writeFileSync(path.join(input.cwd, 'designs', 'rev-0001', 'layout.json'), JSON.stringify({
-      allocations: [{ id: 'training', usage: '训练区', regionIds: ['r1'], enclosed: false }],
+    fs.writeFileSync(path.join(input.cwd, 'designs', 'rev-0001', 'intent.json'), JSON.stringify({
+      schemaVersion: 1,
+      rooms: [{ id: 'training', usage: '训练区', area: { target: 60 }, privacy: 'public' }],
+      adjacencies: [],
+      daylight: [],
+      assumptions: [],
+      unmetRequirements: [],
     }));
     return { nativeSessionId: 'native-route', failed: false };
   });
@@ -52,10 +58,14 @@ test('两个入口共用服务端 DXF 轮廓及修正流程，生成按钮保存
   for (const generate of [false, true]) {
     const { sessionId, cwd } = workspace(t);
     const inputsDir = path.join(cwd, 'inputs');
-    fs.mkdirSync(inputsDir);
-    const dxf = ['0', 'SECTION', '2', 'ENTITIES', '0', 'LWPOLYLINE', '8', 'outline', '90', '4', '70', '1',
-      '10', '100', '20', '200', '10', '110', '20', '200', '10', '110', '20', '208', '10', '100', '20', '208', '0', 'ENDSEC', '0', 'EOF'].join('\n');
-    fs.writeFileSync(path.join(inputsDir, 'outline.dxf'), dxf);
+    fs.mkdirSync(inputsDir, { recursive: true });
+    const model = layoutModel();
+    fs.writeFileSync(path.join(inputsDir, 'outline.json'), JSON.stringify({
+      boundary: model.floor.boundary.slice(0, -1),
+      origin: model.model.origin,
+      units: 'm',
+      assumptions: ['测试轮廓'],
+    }));
     const response = await request({ sessionId, provider: 'echo', message: '生成健身房' }, generate);
     assert.equal(response.statusCode, 200);
     assert.ok(response.events.some((event) => event.type === 'design' && event.valid));
@@ -64,7 +74,7 @@ test('两个入口共用服务端 DXF 轮廓及修正流程，生成按钮保存
     prompts.push(inputs.at(-1)!.systemPrompt!);
   }
   assert.equal(prompts[0], prompts[1]);
-  assert.ok(prompts[0].includes('"rect":[0,0,10,8]'));
+  assert.ok(prompts[0].includes('rooms'));
 });
 
 test('生成入口接受已有方案，并按显式选中的父版本修改', async (t) => {
@@ -81,9 +91,7 @@ test('生成入口接受已有方案，并按显式选中的父版本修改', as
   t.mock.method(echoAdapter, 'run', async (input: ChatTurnInput) => {
     assert.match(input.systemPrompt ?? '', /有氧训练区/);
     assert.doesNotMatch(input.systemPrompt ?? '', /力量训练区/);
-    fs.writeFileSync(path.join(cwd, 'designs', 'rev-0003', 'layout.json'), JSON.stringify({
-      allocations: [{ id: 'training', usage: '有氧训练区', regionIds: ['r1'], enclosed: false }],
-    }));
+    fs.writeFileSync(path.join(cwd, 'designs', 'rev-0003', 'layout.json'), JSON.stringify(v2Layout({ spaces: [{ id: 'training', usage: '有氧训练区', enclosed: false, boundary: [[0, 0], [10, 0], [10, 8], [0, 8]] }] })));
     return { failed: false };
   });
   const response = await request({ sessionId, provider: 'echo', parentRevisionId: 'rev-0001' }, true);
@@ -93,24 +101,27 @@ test('生成入口接受已有方案，并按显式选中的父版本修改', as
   assert.equal(child.model.parentRevisionId, 'rev-0001');
 });
 
-test('生成入口轮廓缺失时不调用 Agent，持续校验失败时 done 为 failed', async (t) => {
+test('生成入口无上传轮廓时会调用 Agent；仅 layout 无 outline 时 done 为 failed', async (t) => {
   const { sessionId, cwd } = workspace(t);
   let calls = 0;
+  const captured: ChatTurnInput[] = [];
   t.mock.method(echoAdapter, 'run', async (input: ChatTurnInput) => {
     calls++;
-    fs.writeFileSync(path.join(input.cwd, 'designs', 'rev-0002', 'layout.json'), JSON.stringify({
-      allocations: [{ id: 'training', usage: '训练区', regionIds: ['unknown'], enclosed: false }],
-    }));
+    captured.push(input);
+    fs.writeFileSync(path.join(input.cwd, 'designs', 'rev-0001', 'layout.json'), JSON.stringify({ schemaVersion: 2, spaces: [], assumptions: [], unmetRequirements: [] }));
     return { failed: false };
   });
   const missing = await request({ sessionId, provider: 'echo' }, true);
-  assert.equal(missing.statusCode, 400);
-  assert.equal(calls, 0);
+  assert.equal(missing.statusCode, 200);
+  assert.equal(calls, 1);
+  assert.match(captured[0].systemPrompt ?? '', /inputs\/outline\.json/);
+  assert.deepEqual(missing.events.at(-1), { type: 'done', status: 'failed' });
   const folder = path.join(cwd, 'designs', 'rev-0001');
   fs.mkdirSync(folder, { recursive: true });
   fs.writeFileSync(path.join(folder, 'model.json'), JSON.stringify(layoutModel()));
+  fs.writeFileSync(path.join(folder, 'validation.json'), JSON.stringify({ valid: true, status: 'accepted' }));
   const failed = await request({ sessionId, provider: 'echo' }, true);
-  assert.equal(calls, 2);
+  assert.ok(calls >= 2);
   assert.deepEqual(failed.events.at(-1), { type: 'done', status: 'failed' });
   assert.deepEqual(listDesigns(sessionId).filter((design) => design.valid).map((design) => design.revisionId), ['rev-0001']);
 });
@@ -132,9 +143,7 @@ test('默认继承最后的有效方案，拒绝显式选择旧越界稿或 pend
     calls++;
     assert.match(input.systemPrompt ?? '', /有效有氧区/);
     assert.doesNotMatch(input.systemPrompt ?? '', /无效力量区/);
-    fs.writeFileSync(path.join(cwd, 'designs', 'rev-0004', 'layout.json'), JSON.stringify({
-      allocations: [{ id: 'training', usage: '有氧训练区', regionIds: ['r1'], enclosed: false }],
-    }));
+    fs.writeFileSync(path.join(cwd, 'designs', 'rev-0004', 'layout.json'), JSON.stringify(v2Layout()));
     return { failed: false };
   });
   assert.equal((await request({ sessionId, provider: 'echo', parentRevisionId: 'rev-0002' }, true)).statusCode, 409);

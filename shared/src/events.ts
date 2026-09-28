@@ -42,6 +42,12 @@ export interface ThinkingEvent {
   text: string;
 }
 
+export interface SketchPreviewEvent {
+  type: 'sketchPreview';
+  /** 相对会话 cwd 的路径，如 inputs/sketch-preview.png */
+  path: string;
+}
+
 export type StreamEvent =
   | SessionEvent
   | ProgressEvent
@@ -49,4 +55,5 @@ export type StreamEvent =
   | ErrorEvent
   | DoneEvent
   | DesignEvent
-  | ThinkingEvent;
+  | ThinkingEvent
+  | SketchPreviewEvent;

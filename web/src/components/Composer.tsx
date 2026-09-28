@@ -21,7 +21,7 @@ export function Composer({
       <textarea
         value={text}
         disabled={disabled}
-        placeholder="描述你的空间设计需求…"
+        placeholder="描述户型需求，例如：两室一厅约 90㎡，客厅朝南…"
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {

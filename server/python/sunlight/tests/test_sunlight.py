@@ -9,7 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from grid_pack import grid_sensor_areas, make_legend, pack_grids_with_hours
 from hb_build import build_honeybee_model
-from lb_direct_sun import run_honeybee_direct_sun
+from lb_direct_sun import run_honeybee_direct_sun, _shade_triangles, _ray_triangle
 from sunlight_metrics import package_results
 from sunlight_time import analysis_period, sun_intervals
 from wea_from_config import build_wea
@@ -98,6 +98,41 @@ class CivilTimeTests(unittest.TestCase):
 
 
 class RayPhysicsTests(unittest.TestCase):
+    def test_window_sill_and_head_remain_opaque_with_center_based_position(self):
+        for scale in (1, 1000):
+            scene = model()
+            scene["model"]["units"] = "m" if scale == 1 else "mm"
+            scene["floor"]["elevation"] = 2 * scale
+            scene["walls"] = [{"id": "south", "height": 3 * scale,
+                               "geometry": {"points": [[0, 0], [5 * scale, 0], [10 * scale, 0]]}}]
+            scene["openings"] = [{"id": "win", "hostWallId": "south", "position": 5 * scale,
+                                  "width": 2 * scale, "height": 1.2 * scale, "sillHeight": 0.9 * scale}]
+            scene["windows"] = [{"id": "w1", "openingId": "win"}]
+            hb, _ = build_honeybee_model(scene, config())
+            triangles = _shade_triangles(hb)
+
+            def blocked(x, z):
+                return any(_ray_triangle((x * scale, -scale, (2 + z) * scale), (0, 1, 0), tri)
+                           is not None for tri in triangles)
+
+            self.assertFalse(blocked(4.5, 1.5))
+            self.assertFalse(blocked(5.5, 1.5))
+            self.assertTrue(blocked(3.5, 1.5))
+            self.assertTrue(blocked(6.5, 1.5))
+            self.assertTrue(blocked(4.5, 0.5))
+            self.assertTrue(blocked(4.5, 2.5))
+            self.assertAlmostEqual(sum(shade.area for shade in hb.orphaned_shades) / scale ** 2, 27.6)
+
+    def test_window_without_sill_defaults_to_floor_but_keeps_wall_above(self):
+        scene = model()
+        scene["walls"] = [{"id": "south", "height": 3, "geometry": {"points": [[0, 0], [10, 0]]}}]
+        scene["openings"] = [{"id": "win", "hostWallId": "south", "position": 5, "width": 2, "height": 1.2}]
+        scene["windows"] = [{"id": "w1", "openingId": "win"}]
+        hb, _ = build_honeybee_model(scene, config())
+        triangles = _shade_triangles(hb)
+        self.assertFalse(any(_ray_triangle((4.5, -1, 0.5), (0, 1, 0), tri) is not None for tri in triangles))
+        self.assertTrue(any(_ray_triangle((4.5, -1, 2), (0, 1, 0), tri) is not None for tri in triangles))
+
     def test_unobstructed_duration_clips_last_step(self):
         result = run_honeybee_direct_sun(model(), config(
             localTimeRange=["12:00", "13:10"], timestepMinutes=30))

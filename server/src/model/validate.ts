@@ -165,6 +165,13 @@ export function validateModel(input: unknown): ValidationResult {
   );
 
   const openingIds = new Set<string>();
+  const filledOpeningIds = new Set<string>();
+  for (const item of [...doors, ...windows]) {
+    const id = (item as Record<string, unknown>).openingId;
+    if (typeof id !== 'string') continue;
+    if (filledOpeningIds.has(id)) errors.push(`opening ${id} 只能安装一个门或窗`);
+    filledOpeningIds.add(id);
+  }
   for (const o of openings) {
     const opening = o as Record<string, unknown>;
     if (typeof opening.id !== 'string') {
@@ -187,6 +194,14 @@ export function validateModel(input: unknown): ValidationResult {
     const wallLen = Array.isArray(hostPts) ? wallPolylineLength(hostPts) : 0;
     const openingWidth = Number(opening.width);
     const openingPos = Number(opening.position);
+    if (opening.sillHeight !== undefined) {
+      const sill = opening.sillHeight;
+      if (typeof sill !== 'number' || !Number.isFinite(sill) || sill < 0) {
+        errors.push(`opening ${opening.id} 的 sillHeight 必须是非负数`);
+      } else if (hostWall && sill + Number(opening.height) > Number(hostWall.height) + 1e-6) {
+        errors.push(`opening ${opening.id} 顶部超过宿主墙高度`);
+      }
+    }
 
     const fillRef = typeof opening.fillRef === 'string' ? opening.fillRef : undefined;
     if (fillRef && catalog.has(fillRef)) {

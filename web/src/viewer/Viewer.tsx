@@ -1,20 +1,26 @@
 import { useEffect, useMemo, useRef } from 'react';
-import type { ModelViewMode, ViewerContent } from '../types';
+import type { ModelDisplayMode, ModelViewMode, ViewerContent } from '../types';
 import { createScene, type ViewerScene } from './Scene';
 import { UsageLegend } from './UsageLegend';
 import { SunlightLegend } from './SunlightLegend';
 
 export function Viewer({
   content,
-  viewMode,
-  onViewModeChange,
+  displayMode,
+  show3d,
+  onDisplayModeChange,
+  onShow3dChange,
 }: {
   content: ViewerContent;
-  viewMode: ModelViewMode;
-  onViewModeChange: (mode: ModelViewMode) => void;
+  displayMode: ModelDisplayMode;
+  show3d: boolean;
+  onDisplayModeChange: (mode: ModelDisplayMode) => void;
+  onShow3dChange: (on: boolean) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<ViewerScene | null>(null);
+
+  const viewMode: ModelViewMode = show3d ? '3d' : displayMode;
 
   const modelContent = useMemo(
     () => (content.kind === 'model' ? { ...content, view: viewMode } : content),
@@ -36,27 +42,27 @@ export function Viewer({
     sceneRef.current?.setContent(modelContent);
   }, [modelContent]);
 
-  const showTabs = content.kind === 'model';
+  const showDisplayBar = content.kind === 'model';
   const sunlight =
-    content.kind === 'model' && viewMode === 'sunlight' && content.sunlight?.status === 'completed'
+    content.kind === 'model' && displayMode === 'sunlight' && !show3d && content.sunlight?.status === 'completed'
       ? content.sunlight
       : undefined;
 
   return (
     <div className="viewer">
-      {showTabs && (
+      {showDisplayBar && (
         <div className="viewer-tabs">
           <button
             type="button"
-            className={viewMode === 'usage' ? 'active' : ''}
-            onClick={() => onViewModeChange('usage')}
+            className={displayMode === 'usage' ? 'active' : ''}
+            onClick={() => onDisplayModeChange('usage')}
           >
             平面方案
           </button>
           <button
             type="button"
-            className={viewMode === 'sunlight' ? 'active' : ''}
-            onClick={() => onViewModeChange('sunlight')}
+            className={displayMode === 'sunlight' ? 'active' : ''}
+            onClick={() => onDisplayModeChange('sunlight')}
             disabled={!content.sunlight || content.sunlight.status !== 'completed'}
             title={!content.sunlight ? '请先运行日照分析' : undefined}
           >
@@ -64,16 +70,38 @@ export function Viewer({
           </button>
         </div>
       )}
-      <div className="viewer-canvas" ref={ref} />
-      {content.kind === 'model' && viewMode === 'usage' && <UsageLegend model={content.model} />}
+      {showDisplayBar && (
+        <button
+          type="button"
+          className={`viewer-3d-toggle${show3d ? ' active' : ''}`}
+          aria-pressed={show3d}
+          disabled={displayMode !== 'usage'}
+          title={displayMode !== 'usage' ? '日照着色仅支持平面视图' : undefined}
+          onClick={() => onShow3dChange(!show3d)}
+        >
+          3D
+        </button>
+      )}
+      {content.kind === 'sketch' && (
+        <div className="viewer-sketch">
+          <img src={content.imageUrl} alt={`参考草图 ${content.name}`} />
+          <p>参考草图 · Agent 将结合对话推断轮廓与分区</p>
+        </div>
+      )}
+      <div className="viewer-canvas" ref={ref} style={content.kind === 'sketch' ? { display: 'none' } : undefined} />
+      {content.kind === 'model' && displayMode === 'usage' && <UsageLegend model={content.model} />}
       {sunlight && <SunlightLegend result={sunlight} />}
-      {content.kind === 'model' && viewMode === 'sunlight' && !sunlight && (
+      {content.kind === 'model' && displayMode === 'sunlight' && !sunlight && (
         <div className="viewer-sunlight-empty">运行日照后在此查看房间级时长着色</div>
       )}
       <div className="viewer-label">
-        {viewMode === 'sunlight'
-          ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'
-          : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
+        {content.kind === 'sketch'
+          ? '参考草图（可选）— 生成方案后将显示可编译平面'
+          : show3d
+            ? '3D 视图（左键平移，右键旋转，滚轮缩放）'
+            : displayMode === 'sunlight'
+              ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'
+              : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
       </div>
     </div>
   );

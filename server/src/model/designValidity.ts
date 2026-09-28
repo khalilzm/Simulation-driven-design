@@ -12,7 +12,7 @@ export function validateStoredDesign(raw: unknown): ValidationResult {
     if (!errors.length) {
       const scale = model.model.units === 'mm' ? 1000 : 1;
       for (const space of model.spaces) if (outsideArea(space.boundary, model.floor.boundary) / scale ** 2 > 1e-6) {
-        errors.push(`space ${space.id} 超出固定轮廓`);
+        errors.push(`space ${space.id} 超出固定轮廓（顶点须落在 floor.boundary 内，勿按 bbox 外扩）`);
       }
     }
     return { valid: errors.length === 0, errors };

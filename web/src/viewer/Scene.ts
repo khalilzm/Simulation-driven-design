@@ -1,4 +1,10 @@
-import { CCViewerApp, GCanvasTexture, GSpriteMaterial, GTextSprite } from '@glodon/concetto-viewer';
+import {
+  CCViewerApp,
+  GCanvasTexture,
+  GSpriteMaterial,
+  GTextSprite,
+  ViewType,
+} from '@glodon/concetto-viewer';
 import {
   polygonBBoxMinExtent,
   polygonInteriorLabelPoint,
@@ -9,9 +15,13 @@ import {
 import type { ViewerContent } from '../types';
 import { entitiesToLinePositions } from './dxf';
 import {
+  modelToDoorMeshes3D,
   modelToLineGroups,
   modelToSpaceFills,
+  modelToWallBoxes3D,
   modelToWallFills,
+  modelToWindowFills,
+  modelToWindowMeshes3D,
 } from './modelRender';
 import { sunlightGridsToFills } from './sunlightMeshRender';
 import { addSpaceFillMesh } from './spaceFillMesh';
@@ -80,10 +90,12 @@ export function createScene(container: HTMLDivElement): ViewerScene {
   const viewer = new CCViewerApp(container, {
     preset: 'cad',
     environment: { backgroundColor: '#F5F0E6' },
-    controls: { rotate: false, pan: true, zoom: true },
-    helpers: { axes: false, grid: false, ground: false, sky: false },
-    picking: false,
-    effects: { edgeDetection: { enabled: false } },
+    camera: { fov: 60, near: 0.1 },
+    lighting: { ambientIntensity: 0, sunIntensity: 1.2 * Math.PI, fillLightIntensity: 0, shadows: true },
+    controls: { rotate: true, pan: true, zoom: true },
+    helpers: { axes: false, grid: false, ground: true, sky: false },
+    picking: true,
+    effects: { edgeDetection: { enabled: false }, ssao: { enabled: true, radius: 2.0 } },
   });
 
   const overlays = new SpaceOverlayRegistry();
@@ -97,6 +109,14 @@ export function createScene(container: HTMLDivElement): ViewerScene {
   const setContent = (content: ViewerContent) => {
     viewer.clear();
     overlays.clear(viewer);
+    const navigationMode =
+      content.kind === 'model'
+        ? content.view === '3d'
+          ? ViewType.ThreeD
+          : ViewType.TwoD
+        : content.kind === 'dxf'
+          ? ViewType.TwoD
+          : null;
     let added = false;
     if (content.kind === 'dxf') {
       const positions = entitiesToLinePositions(content.entities);
@@ -106,9 +126,27 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       }
     } else if (content.kind === 'model') {
       const useSunlight = content.view === 'sunlight' && content.sunlight?.status === 'completed';
+      const is3d = content.view === '3d';
       const sun = content.sunlight;
       const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun) : [];
-      if (useSunlight && gridFills.length) {
+      if (is3d) {
+        for (const fill of modelToSpaceFills(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays);
+          added = true;
+        }
+        for (const fill of modelToWallBoxes3D(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
+          added = true;
+        }
+        for (const fill of modelToDoorMeshes3D(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
+          added = true;
+        }
+        for (const fill of modelToWindowMeshes3D(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
+          added = true;
+        }
+      } else if (useSunlight && gridFills.length) {
         for (const fill of gridFills) {
           addSpaceFillMesh(viewer, fill, overlays);
           added = true;
@@ -119,8 +157,12 @@ export function createScene(container: HTMLDivElement): ViewerScene {
           added = true;
         }
       }
-      if (!useSunlight) {
+      if (!useSunlight && !is3d) {
         for (const fill of modelToWallFills(content.model)) {
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
+          added = true;
+        }
+        for (const fill of modelToWindowFills(content.model)) {
           addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
           added = true;
         }
@@ -132,6 +174,11 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       }
     }
     if (added) viewer.fitBounds();
+    if (navigationMode !== null) {
+      viewer.navigation.setView(navigationMode);
+      viewer.navigation.setControlMode(navigationMode);
+      viewer.navigation.setControlRotate(navigationMode === ViewType.ThreeD);
+    }
   };
 
   return {

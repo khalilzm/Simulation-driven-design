@@ -1,40 +1,41 @@
 import type { CCViewerApp } from '@glodon/concetto-viewer';
-import { GMesh, GMeshBasicMaterial } from '@glodon/concetto-viewer';
-import { BufferGeometry, DoubleSide, Float32BufferAttribute, Uint32BufferAttribute } from 'three';
+import { DoubleSide } from 'three';
 import type { PolygonFill } from './modelRender';
 import type { SpaceOverlayRegistry } from './spaceOverlay';
 
 export interface FillMeshOptions {
   depthWrite?: boolean;
+  /** 用光照物理材质 GMeshMaterial（立体感），否则用无光照的 GMeshBasicMaterial */
+  physical?: boolean;
 }
 
-/** 将 earcut 剖分结果构造成 GMesh 并加入场景 */
+/** 通过 CCViewerApp.addMesh 挂载，以便注册 GPU snap / 旋转枢轴捕捉 */
 export function addSpaceFillMesh(
   viewer: CCViewerApp,
   fill: PolygonFill,
   overlays: SpaceOverlayRegistry,
   options: FillMeshOptions = {},
-): GMesh {
-  const geometry = new BufferGeometry();
-  geometry.setAttribute('position', new Float32BufferAttribute(fill.mesh.positions, 3));
-  geometry.setIndex(new Uint32BufferAttribute(fill.mesh.indices, 1));
-  geometry.computeVertexNormals();
-
+): void {
   const depthWrite = options.depthWrite ?? false;
-  const material = new GMeshBasicMaterial({
-    color: fill.color,
-    opacity: fill.opacity,
-    transparent: fill.opacity < 1,
-    depthWrite,
-    depthTest: true,
-    side: DoubleSide,
-    // 与图例 CSS 色一致，避免 tone mapping 把 #002cf3 等拉偏
-    toneMapped: false,
+  const physical = options.physical ?? false;
+  const handle = viewer.addMesh({
+    positions: fill.mesh.positions,
+    indices: fill.mesh.indices,
+    materialType: physical ? 'GMeshMaterial' : 'GMeshBasicMaterial',
+    material: {
+      color: fill.color,
+      opacity: fill.opacity,
+      transparent: fill.opacity < 1,
+      depthWrite,
+      depthTest: true,
+      side: DoubleSide,
+      ...(physical
+        ? { roughness: 1.0, metalness: 0, flatShading: true }
+        : {
+            // 与图例 CSS 色一致，避免 tone mapping 把 #002cf3 等拉偏
+            // toneMapped: false,
+          }),
+    },
   });
-
-  const mesh = new GMesh(geometry, material);
-  const componentId =
-    fill.meshId ?? (fill.spaceId ? `space-fill-${fill.spaceId}` : undefined);
-  overlays.add(viewer, mesh, componentId);
-  return mesh;
+  overlays.addMeshHandle(viewer, handle);
 }

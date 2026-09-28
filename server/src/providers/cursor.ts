@@ -16,8 +16,8 @@ import type { AgentOptions, ToolName } from '@cursor/sdk';
 const HEARTBEAT_MS = 20_000;
 const DEFAULT_MODEL = 'composer-2.5';
 
-/** 空间设计任务仅允许写文件，禁止探索仓库 / shell / subagent */
-export const SPACE_DESIGN_ALLOWED_TOOLS: ToolName[] = ['edit'];
+/** 空间设计任务：读草图/已有文件 + 写 outline 与 layout */
+export const SPACE_DESIGN_ALLOWED_TOOLS: ToolName[] = ['read', 'edit'];
 
 export function buildCursorAgentOptions(
   modelId: string,

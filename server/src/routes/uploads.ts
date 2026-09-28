@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Router } from 'express';
 import { workspacesDir } from '../config';
+import { isBlockedUploadFilename, isSketchFilename, mimeForInputFile } from '../design/inputHints';
 
 export const uploadsRouter = Router();
 
@@ -33,6 +34,14 @@ uploadsRouter.post('/uploads', (req, res) => {
 
   const id = typeof sessionId === 'string' && sessionId ? sessionId : randomUUID();
   const name = safeName(filename);
+  if (isBlockedUploadFilename(name)) {
+    res.status(400).json({ error: '不支持 DXF；请用对话描述需求，或上传 PNG/JPEG/WebP 手绘草图（可选）' });
+    return;
+  }
+  if (!isSketchFilename(name)) {
+    res.status(400).json({ error: '仅支持 PNG、JPEG、WebP 手绘草图' });
+    return;
+  }
   const dir = inputsDir(id);
   fs.mkdirSync(dir, { recursive: true });
 
@@ -60,5 +69,5 @@ uploadsRouter.get('/files/:sessionId/:name', (req, res) => {
     res.status(404).json({ error: 'not found' });
     return;
   }
-  res.type('text/plain').sendFile(file);
+  res.type(mimeForInputFile(name)).sendFile(file);
 });

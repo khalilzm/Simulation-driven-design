@@ -1,22 +1,20 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SpaceModel } from '@sdd/shared';
-import { extractDxfOutline } from '../dxf/outline';
 import { buildOutlineJson, outlineToText, type OutlineContext } from '../spacePrompt';
+import { listSketchInputHints } from './inputHints';
+import { loadProgramOutlineFile } from './programOutline';
 
 export function loadOutlineContext(cwd: string, parent: SpaceModel | null): OutlineContext {
   if (parent) return { source: 'parent', outline: outlineToText(parent), currentModel: parent };
   const inputsDir = path.join(cwd, 'inputs');
-  if (!fs.existsSync(inputsDir)) return { source: 'none' };
-  const files = fs.readdirSync(inputsDir).filter((name) => /\.dxf$/i.test(name))
-    .sort((a, b) => fs.statSync(path.join(inputsDir, b)).mtimeMs - fs.statSync(path.join(inputsDir, a)).mtimeMs);
-  for (const file of files) {
-    try {
-      const outline = extractDxfOutline(fs.readFileSync(path.join(inputsDir, file), 'utf8'));
-      if (outline) return { source: 'dxf', outline: buildOutlineJson(outline) };
-    } catch {
-      // 尝试其他输入；无可用轮廓时由提示词解释原因。
+  if (fs.existsSync(inputsDir)) {
+    const program = loadProgramOutlineFile(path.join(inputsDir, 'outline.json'));
+    if (program) {
+      return { source: 'program', outline: program.outlineJson, inputHints: listSketchInputHints(inputsDir) };
     }
+    const hints = listSketchInputHints(inputsDir);
+    if (hints) return { source: 'none', inputHints: hints };
   }
   return { source: 'none' };
 }

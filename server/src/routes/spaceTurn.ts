@@ -48,16 +48,12 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
     return;
   }
   if (parentId && parent && !isAcceptedDesign(id, parentId, parent)) {
-    res.status(409).json({ error: '所选方案未通过几何校验，请选择有效版本或基于 DXF 重新生成' });
+    res.status(409).json({ error: '所选方案未通过几何校验，请选择有效版本或重新生成' });
     return;
   }
   const outline = loadOutlineContext(cwd, parent);
-  if (generate && !outline.outline) {
-    res.status(400).json({ error: '没有可用轮廓，请上传有效 DXF 或加载已有方案' });
-    return;
-  }
   const userMessage = typeof message === 'string' && message.trim() ? message
-    : '根据给定轮廓及已有需求生成一个功能分区草案。已有布局时沿用其功能要求；用途未指定时采用明确说明的临时用途假设。';
+    : '根据对话描述生成一套可落地的户型分区（外轮廓 + 房间），面积与功能名称写在 assumptions/usage 里。';
   const previousCoverage = session.requireFullCoverage ?? session.messages
     .filter((item) => item.role === 'user')
     .reduce((required, item) => resolveFullCoverage(item.content, required), false);
@@ -85,7 +81,7 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
   try {
     const result = await runSpaceTurn({
       cwd, revisionId: nextRevisionId(id), message: userMessage, outline,
-      nativeSessionId: session.nativeSessionId, model: config.model || undefined, requireDesign: generate,
+      nativeSessionId: session.nativeSessionId, model: config.model || undefined, requireDesign: true,
     }, getAdapter(provider), emit, abort.signal);
     if (result.nativeSessionId) session.nativeSessionId = result.nativeSessionId;
     emit({ type: 'done', status: result.failed ? 'failed' : 'completed' });

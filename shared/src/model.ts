@@ -60,6 +60,8 @@ export interface Wall {
   thickness: number;
   height: number;
   fixed: boolean;
+  /** v2 布局生成的构件；未标记的旧构件按既有建筑保留。 */
+  generatedBy?: 'layout-v2';
   /** 构件类型引用，如 wall-int-200 */
   analysisProperties?: Record<string, unknown>;
 }
@@ -67,10 +69,13 @@ export interface Wall {
 export interface Opening {
   id: string;
   hostWallId: string;
-  /** 距墙折线起点的弧长；与 width/height 一样使用 model.units。 */
+  /** 洞口中心距墙折线起点的弧长；与 width/height 一样使用 model.units。 */
   position: number;
   width: number;
   height: number;
+  /** 洞口底部距楼面高度，使用 model.units；省略时为 0。 */
+  sillHeight?: number;
+  generatedBy?: 'layout-v2';
   /** 填充构件引用（door/window id） */
   fillRef?: string;
 }

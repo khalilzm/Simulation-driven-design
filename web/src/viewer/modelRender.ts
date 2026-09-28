@@ -3,14 +3,19 @@ import {
   polygonGeometryError,
   resolveSpaceStyle,
   wallSolidPolylines,
+  wallSolidPrisms,
+  type Opening,
   type SpaceModel,
   type SunlightResult,
+  type Wall,
 } from '@sdd/shared';
 import { hoursToSunlightColor, resolveSunlightColorScale } from './sunlightColor';
-import { triangulatePolygonEarcut, type IndexedPolygonMesh } from './polygonMesh';
+import { extrudePolygonPrism, triangulatePolygonEarcut, type IndexedPolygonMesh } from './polygonMesh';
 
-/** 墙体填充（深灰 CAD 风格） */
-const WALL_FILL_COLOR = 0x666666;
+/** 平面墙体填充（#8e8e8e） */
+const WALL_FILL_COLOR_2D = 0x8e8e8e;
+/** 3D 墙体（#e8e8e8） */
+const WALL_FILL_COLOR_3D = 0xDDDDDD;
 
 export interface LineGroup {
   positions: number[];
@@ -128,8 +133,223 @@ export function modelToWallFills(model: SpaceModel): PolygonFill[] {
       const outline = centerlineWallPolygon(line, w.thickness);
       if (!outline || outline.length < 3) continue;
       const mesh = triangulatePolygonEarcut(closeRing(outline), 0.045 + i * 0.00001);
-      if (mesh) fills.push({ mesh, color: WALL_FILL_COLOR, opacity: 1 });
+      if (mesh) fills.push({ mesh, color: WALL_FILL_COLOR_2D, opacity: 1 });
     }
+  });
+  return fills;
+}
+
+/** 一段墙的 3D 盒子网格（8 顶点 + 12 三角形，用于门扇/玻璃）。 */
+function wallBoxMesh(
+  a: [number, number],
+  b: [number, number],
+  thickness: number,
+  z0: number,
+  z1: number,
+): IndexedPolygonMesh | null {
+  const ux = b[0] - a[0];
+  const uy = b[1] - a[1];
+  const len = Math.hypot(ux, uy);
+  if (len < 1e-9) return null;
+  const dx = ux / len;
+  const dy = uy / len;
+  const nx = -dy;
+  const ny = dx;
+  const h = thickness / 2;
+  // 逆时针顶点序，保证顶/底/侧面法线统一朝外。
+  const cx: [number, number][] = [
+    [a[0] - nx * h, a[1] - ny * h],
+    [b[0] - nx * h, b[1] - ny * h],
+    [b[0] + nx * h, b[1] + ny * h],
+    [a[0] + nx * h, a[1] + ny * h],
+  ];
+  const positions = new Float32Array(24);
+  for (let i = 0; i < 4; i++) {
+    positions[i * 3] = cx[i][0];
+    positions[i * 3 + 1] = cx[i][1];
+    positions[i * 3 + 2] = z0;
+    positions[(i + 4) * 3] = cx[i][0];
+    positions[(i + 4) * 3 + 1] = cx[i][1];
+    positions[(i + 4) * 3 + 2] = z1;
+  }
+  const indices = new Uint32Array([
+    0, 2, 1, 0, 3, 2,
+    4, 5, 6, 4, 6, 7,
+    0, 1, 5, 0, 5, 4,
+    1, 2, 6, 1, 6, 5,
+    2, 3, 7, 2, 7, 6,
+    3, 0, 4, 3, 4, 7,
+  ]);
+  return { positions, indices };
+}
+
+/** 门/窗框件：中心 (cx,cy)，沿墙方向 u 宽 alongU，进深 depth（法向），高度 z0..z1。 */
+function frameBox(
+  cx: number,
+  cy: number,
+  ux: number,
+  uy: number,
+  alongU: number,
+  depth: number,
+  z0: number,
+  z1: number,
+): IndexedPolygonMesh | null {
+  return wallBoxMesh(
+    [cx - ux * alongU / 2, cy - uy * alongU / 2],
+    [cx + ux * alongU / 2, cy + uy * alongU / 2],
+    depth,
+    z0,
+    z1,
+  );
+}
+
+/** 3D 墙体：中线条带 + miter 轮廓，按门/窗真实高度在 (弧长 × 高度) 平面做布尔减后分段挤出。 */
+export function modelToWallBoxes3D(model: SpaceModel): PolygonFill[] {
+  const fills: PolygonFill[] = [];
+  model.walls.forEach((wall, wi) => {
+    const pts = wall.geometry.points;
+    if (pts.length < 2 || wall.thickness <= 0) return;
+    let bi = 0;
+    for (const prism of wallSolidPrisms(wall, model.openings)) {
+      const outline = centerlineWallPolygon(prism.points, wall.thickness);
+      if (!outline || outline.length < 3) continue;
+      const mesh = extrudePolygonPrism(closeRing(outline), prism.z0, prism.z1);
+      if (!mesh) continue;
+      fills.push({
+        mesh,
+        color: WALL_FILL_COLOR_3D,
+        opacity: 1,
+        meshId: `wall3d-${wi}-${bi++}`,
+      });
+    }
+  });
+  return fills;
+}
+
+const DOOR_THICKNESS = 0.04;
+const GLASS_THICKNESS = 0.01;
+const DOOR_COLOR = 0x9a6b4f;
+const GLASS_COLOR = 0xaad4e8;
+/** 门框/窗框的可见边框宽度（沿墙方向 / 沿高度方向） */
+const FRAME_THICKNESS = 0.06;
+/** 框件突出墙面之外的单侧厚度 */
+const FRAME_PROUD = 0.01;
+const DOOR_FRAME_COLOR = 0x5c3a24;
+const WINDOW_FRAME_COLOR = 0xe6e2d8;
+
+/** 门扇 + 门框（左右竖框 + 上槛）。 */
+export function modelToDoorMeshes3D(model: SpaceModel): PolygonFill[] {
+  const fills: PolygonFill[] = [];
+  model.doors.forEach((door, i) => {
+    const opening = model.openings.find((o) => o.id === door.openingId);
+    if (!opening) return;
+    const wall = model.walls.find((w) => w.id === opening.hostWallId);
+    if (!wall) return;
+    const loc = openingLocation(wall, opening.position);
+    if (!loc) return;
+    const { mx, my, ux, uy } = loc;
+    const w = opening.width;
+    const h = opening.height;
+    const depth = wall.thickness + FRAME_PROUD * 2;
+    const add = (mesh: IndexedPolygonMesh | null, color: number, id: string) => {
+      if (mesh) fills.push({ mesh, color, opacity: 1, meshId: id });
+    };
+    // 门扇
+    add(wallBoxMesh(
+      [mx - ux * w / 2, my - uy * w / 2],
+      [mx + ux * w / 2, my + uy * w / 2],
+      DOOR_THICKNESS, 0, h,
+    ), DOOR_COLOR, `door3d-${i}`);
+    // 左右竖框
+    add(frameBox(mx - ux * w / 2, my - uy * w / 2, ux, uy, FRAME_THICKNESS, depth, 0, h), DOOR_FRAME_COLOR, `door3d-frame-l-${i}`);
+    add(frameBox(mx + ux * w / 2, my + uy * w / 2, ux, uy, FRAME_THICKNESS, depth, 0, h), DOOR_FRAME_COLOR, `door3d-frame-r-${i}`);
+    // 上槛
+    add(frameBox(mx, my, ux, uy, w + FRAME_THICKNESS, depth, h, h + FRAME_THICKNESS), DOOR_FRAME_COLOR, `door3d-frame-t-${i}`);
+  });
+  return fills;
+}
+
+/** 窗玻璃 + 窗框（左右竖框 + 上下横框）。 */
+export function modelToWindowMeshes3D(model: SpaceModel): PolygonFill[] {
+  const fills: PolygonFill[] = [];
+  model.windows.forEach((win, i) => {
+    const opening = model.openings.find((o) => o.id === win.openingId);
+    if (!opening) return;
+    const wall = model.walls.find((w) => w.id === opening.hostWallId);
+    if (!wall) return;
+    const loc = openingLocation(wall, opening.position);
+    if (!loc) return;
+    const { mx, my, ux, uy } = loc;
+    const w = opening.width;
+    const sill = opening.sillHeight ?? 0;
+    const h = opening.height;
+    const depth = wall.thickness + FRAME_PROUD * 2;
+    const add = (mesh: IndexedPolygonMesh | null, color: number, id: string, opacity = 1) => {
+      if (mesh) fills.push({ mesh, color, opacity, meshId: id });
+    };
+    // 玻璃（半透明）
+    add(wallBoxMesh(
+      [mx - ux * w / 2, my - uy * w / 2],
+      [mx + ux * w / 2, my + uy * w / 2],
+      GLASS_THICKNESS, sill, sill + h,
+    ), GLASS_COLOR, `window3d-glass-${i}`, 0.5);
+    // 左右竖框
+    add(frameBox(mx - ux * w / 2, my - uy * w / 2, ux, uy, FRAME_THICKNESS, depth, sill, sill + h), WINDOW_FRAME_COLOR, `window3d-frame-l-${i}`);
+    add(frameBox(mx + ux * w / 2, my + uy * w / 2, ux, uy, FRAME_THICKNESS, depth, sill, sill + h), WINDOW_FRAME_COLOR, `window3d-frame-r-${i}`);
+    // 上下横框
+    add(frameBox(mx, my, ux, uy, w + FRAME_THICKNESS, depth, sill - FRAME_THICKNESS, sill), WINDOW_FRAME_COLOR, `window3d-frame-b-${i}`);
+    add(frameBox(mx, my, ux, uy, w + FRAME_THICKNESS, depth, sill + h, sill + h + FRAME_THICKNESS), WINDOW_FRAME_COLOR, `window3d-frame-t-${i}`);
+  });
+  return fills;
+}
+
+/** 洞口中心点与墙方向（沿 hostWall 弧长定位）。 */
+function openingLocation(wall: Wall, position: number): { mx: number; my: number; ux: number; uy: number } | null {
+  const pts = wall.geometry.points;
+  if (pts.length < 2) return null;
+  let acc = 0;
+  let mx = pts[0][0];
+  let my = pts[0][1];
+  let ux = 1;
+  let uy = 0;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const segLen = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1]);
+    if (acc + segLen >= position - 1e-9) {
+      const t = segLen > 0 ? (position - acc) / segLen : 0;
+      mx = pts[i][0] + (pts[i + 1][0] - pts[i][0]) * t;
+      my = pts[i][1] + (pts[i + 1][1] - pts[i][1]) * t;
+      ux = (pts[i + 1][0] - pts[i][0]) / (segLen || 1);
+      uy = (pts[i + 1][1] - pts[i][1]) / (segLen || 1);
+      break;
+    }
+    acc += segLen;
+  }
+  return { mx, my, ux, uy };
+}
+
+/** 窗户填充（白色窗框，z 高于功能区与墙体） */
+export function modelToWindowFills(model: SpaceModel): PolygonFill[] {
+  const fills: PolygonFill[] = [];
+  model.windows.forEach((win, i) => {
+    const opening = model.openings.find((o) => o.id === win.openingId);
+    if (!opening) return;
+    const wall = model.walls.find((w) => w.id === opening.hostWallId);
+    if (!wall) return;
+    const loc = openingLocation(wall, opening.position);
+    if (!loc) return;
+    const { mx, my, ux, uy } = loc;
+    const vx = -uy;
+    const vy = ux;
+    const halfT = wall.thickness / 2;
+    const halfW = opening.width / 2;
+    const corners: [number, number][] = [
+      [mx - ux * halfW + vx * halfT, my - uy * halfW + vy * halfT],
+      [mx + ux * halfW + vx * halfT, my + uy * halfW + vy * halfT],
+      [mx + ux * halfW - vx * halfT, my + uy * halfW - vy * halfT],
+      [mx - ux * halfW - vx * halfT, my - uy * halfW - vy * halfT],
+    ];
+    const mesh = triangulatePolygonEarcut(closeRing(corners), 0.05 + i * 0.00001);
+    if (mesh) fills.push({ mesh, color: 0xffffff, opacity: 1 });
   });
   return fills;
 }
@@ -179,7 +399,8 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
     }
     const isWindow = model.windows.some((w) => w.openingId === o.id);
     if (isWindow) {
-      pushSeg(openings, [mx - ux * o.width / 2, my - uy * o.width / 2], [mx + ux * o.width / 2, my + uy * o.width / 2]);
+      // 窗框矩形由 modelToWindowFills 白色填充渲染；中心线抬高到填充之上（z=0.06 > 0.05）
+      pushSeg(openings, [mx - ux * o.width / 2, my - uy * o.width / 2], [mx + ux * o.width / 2, my + uy * o.width / 2], 0.06);
       continue;
     }
     const door = model.doors.find((d) => d.openingId === o.id);

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ProviderId, SunlightConfig } from '@sdd/shared';
 import {
   checkSunlight,
@@ -13,8 +13,8 @@ import {
   patchDesignFloor,
   saveSunlightConfig,
   streamChat,
-  uploadDxf,
-  fetchFileText,
+  uploadSketch,
+  inputFileUrl,
 } from './api';
 import type { SunlightRunResponse } from './api';
 import type { DesignSummary } from './api';
@@ -24,9 +24,8 @@ import { Chat } from './components/Chat';
 import { Composer } from './components/Composer';
 import { Upload } from './components/Upload';
 import { Viewer } from './viewer/Viewer';
-import { parseDxfText } from './viewer/dxf';
 import { sampleModel } from './examples/sampleModel';
-import type { ChatMessage, ModelViewMode, ViewerContent } from './types';
+import type { ChatMessage, ModelDisplayMode, ViewerContent } from './types';
 import { SunlightPanel } from './components/SunlightPanel';
 
 export default function App() {
@@ -39,10 +38,24 @@ export default function App() {
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [currentRevisionId, setCurrentRevisionId] = useState<string>();
   const [notice, setNotice] = useState<string>();
-  const [viewerMode, setViewerMode] = useState<ModelViewMode>('usage');
+  const [viewerDisplay, setViewerDisplay] = useState<ModelDisplayMode>('usage');
+  const [viewer3d, setViewer3d] = useState(false);
+
+  const resetViewerToPlan = () => {
+    setViewerDisplay('usage');
+    setViewer3d(false);
+  };
+
+  const handleViewerDisplayChange = (mode: ModelDisplayMode) => {
+    setViewerDisplay(mode);
+    if (mode === 'sunlight') setViewer3d(false);
+  };
   const [sunlightRun, setSunlightRun] = useState<SunlightRunResponse | null>(null);
   const [sunlightConfig, setSunlightConfig] = useState<SunlightConfig | null | undefined>(undefined);
-  const [sunlightPythonOk, setSunlightPythonOk] = useState<boolean | undefined>();
+  const [sunlightPanelOpen, setSunlightPanelOpen] = useState(false);
+  const [sunlightPythonOk, setSunlightPythonOk] = useState<boolean | undefined>(undefined);
+  const [chatScrollTick, setChatScrollTick] = useState(0);
+  const chatScrollRef = useRef(0);
 
   useEffect(() => {
     fetchStatus()
@@ -82,7 +95,7 @@ export default function App() {
     setViewerContent({ kind: 'empty' });
     setSunlightRun(null);
     setSunlightConfig(undefined);
-    setViewerMode('usage');
+    resetViewerToPlan();
   };
 
   const ensureSessionId = (): string => {
@@ -94,13 +107,16 @@ export default function App() {
   const handleUploadFile = async (name: string, base64: string) => {
     setNotice('上传中…');
     try {
-      const res = await uploadDxf(sessionId, name, base64);
+      const sid = ensureSessionId();
+      const res = await uploadSketch(sid, name, base64);
       setSessionId(res.sessionId);
-      const text = await fetchFileText(res.sessionId, res.file.name);
-      const entities = parseDxfText(text);
       setCurrentRevisionId(undefined);
-      setViewerContent({ kind: 'dxf', entities });
-      setNotice(`已上传 ${res.file.name}（${entities.length} 个实体）`);
+      setViewerContent({
+        kind: 'sketch',
+        imageUrl: inputFileUrl(res.sessionId, res.file.name),
+        name: res.file.name,
+      });
+      setNotice(`已上传草图 ${res.file.name}；在对话中说明需求或点击「生成方案」`);
     } catch (err) {
       setNotice(`上传失败: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -133,7 +149,7 @@ export default function App() {
       setSunlightConfig(sunlight as SunlightConfig);
       setCurrentRevisionId(res.revisionId);
       setSunlightRun(null);
-      setViewerMode('usage');
+      resetViewerToPlan();
       setViewerContent({ kind: 'model', model });
       setDesigns(await listDesigns(sid));
       setNotice(`已加载日照示例 ${res.revisionId}（夏至客厅≥1h）；点击「运行日照」查看结果`);
@@ -145,11 +161,7 @@ export default function App() {
   };
 
   const handleGenerate = async () => {
-    const sid = sessionId;
-    if (!sid) {
-      setNotice('请先上传 DXF 或加载示例方案');
-      return;
-    }
+    const sid = ensureSessionId();
     setBusy(true);
     setNotice('生成中…');
     let newRev: string | undefined;
@@ -161,6 +173,14 @@ export default function App() {
     try {
       await generate(sid, provider, (e) => {
         if (e.type === 'progress') setNotice(e.message);
+        if (e.type === 'sketchPreview') {
+          const name = e.path.includes('/') ? e.path.split('/').pop()! : e.path;
+          setViewerContent({
+            kind: 'sketch',
+            imageUrl: `${inputFileUrl(sid, name)}?t=${Date.now()}`,
+            name: name === 'sketch-preview.png' ? '矢量化预览' : name,
+          });
+        }
         if (e.type === 'text') explanation += e.text;
         if (e.type === 'error') generationError = e.message;
         if (e.type === 'done') generationFailed = e.status === 'failed';
@@ -179,7 +199,7 @@ export default function App() {
         const model = await loadDesign(sid, newRev);
         setCurrentRevisionId(newRev);
         setSunlightRun(null);
-        setViewerMode('usage');
+        resetViewerToPlan();
         setViewerContent({ kind: 'model', model });
         setDesigns(await listDesigns(sid));
         setNotice(`已生成方案 ${newRev}${designWarnings.length ? `；${designWarnings.join('；')}` : ''}`);
@@ -200,7 +220,7 @@ export default function App() {
       const model = await loadDesign(sid, revisionId);
       setCurrentRevisionId(revisionId);
       setSunlightRun(null);
-      setViewerMode('usage');
+      resetViewerToPlan();
       setViewerContent({ kind: 'model', model });
     } catch (err) {
       setNotice(`读取方案失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -220,7 +240,6 @@ export default function App() {
       const out = await runSunlight(sid, rev);
       setSunlightRun(out);
       setSunlightConfig(out.config);
-      setViewerMode('sunlight');
       const created = out.sunlightConfigCreated ? '；已写入默认 sunlight.json（可编辑后重算）' : '';
       const ver =
         out.result.verification.status === 'passed'
@@ -270,7 +289,6 @@ export default function App() {
       const out = await runSunlight(sid, rev);
       setSunlightRun(out);
       setSunlightConfig(out.config);
-      setViewerMode('sunlight');
       const ver =
         out.result.verification.status === 'passed'
           ? '达标通过'
@@ -294,6 +312,8 @@ export default function App() {
     const assistantMsg: ChatMessage = { id: assistantId, role: 'assistant', content: '', status: 'thinking' };
     setMessages((m) => [...m, userMsg, assistantMsg]);
     setBusy(true);
+    chatScrollRef.current += 1;
+    setChatScrollTick(chatScrollRef.current);
 
     const patch = (id: string, fn: (x: ChatMessage) => ChatMessage) =>
       setMessages((m) => m.map((x) => (x.id === id ? fn(x) : x)));
@@ -315,25 +335,50 @@ export default function App() {
           case 'progress':
             patch(assistantId, (x) => ({ ...x, progress: e.message }));
             break;
+          case 'sketchPreview': {
+            if (!sid) break;
+            const name = e.path.includes('/') ? e.path.split('/').pop()! : e.path;
+            setViewerContent({
+              kind: 'sketch',
+              imageUrl: `${inputFileUrl(sid, name)}?t=${Date.now()}`,
+              name: name === 'sketch-preview.png' ? '矢量化预览' : name,
+            });
+            break;
+          }
           case 'design': {
             if (!sid) break;
             const sidNow = sid;
             if (!e.valid) {
-              setNotice(`方案校验失败，保留当前方案：${e.errors.join('；')}`);
+              const errText = e.errors.join('；');
+              patch(assistantId, (x) => ({ ...x, progress: errText }));
+              chatScrollRef.current += 1;
+              setChatScrollTick(chatScrollRef.current);
               break;
-            } else {
-              setNotice(`已生成方案 ${e.revisionId}${e.warnings?.length ? `；${e.warnings.join('；')}` : ''}`);
             }
+            setSunlightPanelOpen(false);
+            setSunlightRun(null);
+            resetViewerToPlan();
+            setCurrentRevisionId(e.revisionId);
+            patch(assistantId, (x) => {
+              const suffix = `\n\n— 已生成户型 ${e.revisionId}，右侧「平面方案」可查看；需日照时请展开下方「日照分析」。`;
+              const base = x.content.trimEnd();
+              return {
+                ...x,
+                progress: undefined,
+                content: base ? `${base}${suffix}` : `已生成户型 ${e.revisionId}。${suffix}`,
+              };
+            });
+            chatScrollRef.current += 1;
+            setChatScrollTick(chatScrollRef.current);
             loadDesign(sidNow, e.revisionId)
               .then((model) => {
-                setCurrentRevisionId(e.revisionId);
-                setSunlightRun(null);
-                setViewerMode('usage');
                 setViewerContent({ kind: 'model', model });
                 return listDesigns(sidNow);
               })
               .then(setDesigns)
-              .catch(() => {});
+              .catch((err) => {
+                setNotice(`方案已生成但加载失败: ${err instanceof Error ? err.message : String(err)}`);
+              });
             break;
           }
           case 'error':
@@ -349,6 +394,8 @@ export default function App() {
               status: e.status === 'failed' ? 'failed' : 'done',
               progress: undefined,
             }));
+            chatScrollRef.current += 1;
+            setChatScrollTick(chatScrollRef.current);
             break;
         }
       });
@@ -383,22 +430,12 @@ export default function App() {
           </div>
           {notice && <div className="notice">{notice}</div>}
         </div>
-        <SunlightPanel
-          model={viewerContent.kind === 'model' ? viewerContent.model : undefined}
-          config={sunlightConfig}
-          result={sunlightRun?.result}
-          pythonOk={sunlightPythonOk}
-          busy={busy}
-          canRun={Boolean(sessionId && currentRevisionId && viewerContent.kind === 'model')}
-          onRun={handleRunSunlight}
-          onShowMap={() => setViewerMode('sunlight')}
-          onSaveConfig={handleSaveSunlightConfig}
-        />
         {designs.length > 0 && (
           <div className="design-list">
             {designs.map((d) => (
               <button
                 key={d.revisionId}
+                type="button"
                 className={`chip ${d.revisionId === currentRevisionId ? 'active' : ''}`}
                 onClick={() => handleSelectDesign(d.revisionId)}
               >
@@ -407,13 +444,38 @@ export default function App() {
             ))}
           </div>
         )}
-        <Chat messages={messages} />
+        <Chat messages={messages} scrollAnchor={chatScrollTick} />
         <Composer disabled={busy} onSend={handleSend} />
+        <div className="sunlight-section">
+          <button
+            type="button"
+            className="sunlight-section-toggle"
+            aria-expanded={sunlightPanelOpen}
+            onClick={() => setSunlightPanelOpen((open) => !open)}
+          >
+            日照分析（可选）{sunlightPanelOpen ? ' ▾' : ' ▸'}
+          </button>
+          {sunlightPanelOpen && (
+            <SunlightPanel
+              model={viewerContent.kind === 'model' ? viewerContent.model : undefined}
+              config={sunlightConfig}
+              result={sunlightRun?.result}
+              pythonOk={sunlightPythonOk}
+              busy={busy}
+              canRun={Boolean(sessionId && currentRevisionId && viewerContent.kind === 'model')}
+              onRun={handleRunSunlight}
+              onShowMap={() => handleViewerDisplayChange('sunlight')}
+              onSaveConfig={handleSaveSunlightConfig}
+            />
+          )}
+        </div>
       </div>
       <Viewer
         content={withSunlight(viewerContent)}
-        viewMode={viewerMode}
-        onViewModeChange={setViewerMode}
+        displayMode={viewerDisplay}
+        show3d={viewer3d}
+        onDisplayModeChange={handleViewerDisplayChange}
+        onShow3dChange={setViewer3d}
       />
     </div>
   );
