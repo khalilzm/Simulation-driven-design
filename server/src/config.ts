@@ -35,8 +35,6 @@ export interface AppConfig {
   sunlightUseRadiance: boolean;
   /** Radiance 可执行目录（rtrace/oconv）；子进程 PATH 前置 */
   sunlightRadianceBin: string;
-  /** 草图矢量化 Python（opencv） */
-  sketchPython: string;
 }
 
 const bundledRadianceBin = path.join(
@@ -62,20 +60,12 @@ function resolveSunlightRadianceBin(): string {
 }
 
 const defaultSunlightVenvPython = path.join(serverDir, 'python', 'sunlight', '.venv', 'bin', 'python3');
-const defaultSketchVenvPython = path.join(serverDir, 'python', 'sketch', '.venv', 'bin', 'python3');
 
 function resolveSunlightPython(): string {
   const fromEnv = process.env.SDD_SUNLIGHT_PYTHON?.trim();
   if (fromEnv) return fromEnv;
   if (fs.existsSync(defaultSunlightVenvPython)) return defaultSunlightVenvPython;
   return 'python3';
-}
-
-function resolveSketchPython(): string {
-  const fromEnv = process.env.SDD_SKETCH_PYTHON?.trim();
-  if (fromEnv) return fromEnv;
-  if (fs.existsSync(defaultSketchVenvPython)) return defaultSketchVenvPython;
-  return resolveSunlightPython();
 }
 
 function resolveSunlightUseRadiance(radianceBin: string): boolean {
@@ -101,7 +91,6 @@ export const config: AppConfig = {
   sunlightPython: resolveSunlightPython(),
   sunlightRadianceBin,
   sunlightUseRadiance,
-  sketchPython: resolveSketchPython(),
 };
 
 /** Node 调用日照 Python 时的环境（Radiance PATH + recipe 开关） */
@@ -125,8 +114,6 @@ export const sunlightEngineId = sunlightUseRadiance
   : 'ladybug-lb-direct-sun-hours@3';
 
 export const sunlightRunnerScript = path.join(repoRoot, 'server', 'python', 'sunlight', 'sdd_run.py');
-
-export const sketchRunnerScript = path.join(repoRoot, 'server', 'python', 'sketch', 'sdd_sketch.py');
 
 export const workspacesDir = process.env.WORKSPACES_DIR
   ? path.resolve(process.env.WORKSPACES_DIR)

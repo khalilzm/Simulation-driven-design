@@ -166,6 +166,29 @@ body {
   border-color: #b8c9dc;
 }
 
+.chat-image {
+  display: block;
+  max-width: 100%;
+  max-height: 240px;
+  object-fit: contain;
+  border-radius: 6px;
+  border: 1px solid #d8d2c4;
+  background: #fff;
+  margin-bottom: 6px;
+}
+
+.bubble .chat-image:last-of-type {
+  margin-bottom: 0;
+}
+
+.bubble:has(.chat-image) {
+  padding: 8px;
+}
+
+.bubble:has(.chat-image) .chat-image + :not(.chat-image) {
+  margin-top: 8px;
+}
+
 .thinking {
   color: #8a8378;
   font-style: italic;
@@ -271,34 +294,6 @@ body {
 
 .viewer-canvas canvas {
   display: block;
-}
-
-.viewer-sketch {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 48px 24px 64px;
-  gap: 12px;
-  overflow: auto;
-}
-
-.viewer-sketch img {
-  max-width: min(720px, 100%);
-  max-height: calc(100% - 48px);
-  object-fit: contain;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  background: #fff;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
-}
-
-.viewer-sketch p {
-  margin: 0;
-  font-size: 13px;
-  color: #555;
 }
 
 .viewer-geometry-notice {

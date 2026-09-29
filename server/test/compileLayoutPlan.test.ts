@@ -131,6 +131,16 @@ function roomPlan(x = 3): LayoutPlanV2 {
   };
 }
 
+test('v2 洞口语义位置 position:"center" 落到边界中点', () => {
+  const plan = roomPlan();
+  (plan.openings![0] as { position: unknown }).position = 'center';
+  const { model } = compileLayoutPlan(plan, catalog(), 'rev-0001', true);
+  const opening = model.openings[0];
+  const wall = model.walls.find((w) => w.id === opening.hostWallId)!;
+  const p = pointAlongWallPolyline(wall.geometry.points, opening.position)!;
+  assert.ok(Math.abs(p[0] - 3) < 1e-6 && Math.abs(p[1] - 4) < 1e-6, `洞口中心应为 (3,4)，实际 (${p})`);
+});
+
 test('v2 doors.swing inward/outward 解析为 left/right', () => {
   const raw = { ...roomPlan(), doors: [{ id: 'd1', openingId: 'o1', swing: 'inward', connects: ['hall', 'studio'] }] };
   const { model } = compileLayout(raw, catalog(), 'rev-0001', true);

@@ -5,11 +5,11 @@ import { buildOutlineJson, outlineToText, type OutlineContext } from '../spacePr
 import { listSketchInputHints } from './inputHints';
 import { loadProgramOutlineFile } from './programOutline';
 
-export function loadOutlineContext(cwd: string, parent: SpaceModel | null): OutlineContext {
+export function loadOutlineContext(cwd: string, parent: SpaceModel | null, lenient = false): OutlineContext {
   if (parent) return { source: 'parent', outline: outlineToText(parent), currentModel: parent };
   const inputsDir = path.join(cwd, 'inputs');
   if (fs.existsSync(inputsDir)) {
-    const program = loadProgramOutlineFile(path.join(inputsDir, 'outline.json'));
+    const program = loadProgramOutlineFile(path.join(inputsDir, 'outline.json'), lenient);
     if (program) {
       return { source: 'program', outline: program.outlineJson, inputHints: listSketchInputHints(inputsDir) };
     }

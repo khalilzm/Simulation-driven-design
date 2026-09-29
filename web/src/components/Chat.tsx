@@ -25,6 +25,9 @@ export function Chat({
           <div className="role">{m.role === 'user' ? '你' : 'Agent'}</div>
           {m.thinking && <div className="thinking-block">{m.thinking}</div>}
           <div className="bubble">
+            {m.images?.map((img) => (
+              <img key={img.url} className="chat-image" src={img.url} alt={img.alt} />
+            ))}
             {m.content || (m.status === 'thinking' ? <span className="thinking">思考中…</span> : '')}
           </div>
           {m.progress && <div className="progress">{m.progress}</div>}

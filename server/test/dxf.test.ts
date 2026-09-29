@@ -4,7 +4,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { extractDxfOutline } from '../src/dxf/outline';
 import { normalizePolygon } from '../src/model/geometry';
-import { exteriorWallsFromBoundary } from '../src/model/exteriorWalls';
 import { buildOutlineJson } from '../src/spacePrompt';
 import type { Vec2 } from '@sdd/shared';
 
@@ -30,15 +29,6 @@ test('normalizePolygon 平移并保留精度', () => {
   const { boundary, origin } = normalizePolygon([[100.12345, 200.98765], [103.1, 200.98765], [103.1, 203.2]]);
   assert.deepEqual(origin, [100.12345, 200.98765]);
   assert.deepEqual(boundary[0], [0, 0]);
-});
-
-test('exteriorWallsFromBoundary 按边生成 id', () => {
-  const boundary: Vec2[] = [[0, 0], [10, 0], [10, 8], [0, 8]];
-  const walls = exteriorWallsFromBoundary(boundary);
-  assert.equal(walls.length, 4);
-  assert.equal(walls[0].id, 'wall-ext-1');
-  assert.equal(walls[0].fixed, true);
-  assert.deepEqual(walls[0].geometry.points, [[0, 0], [10, 0]]);
 });
 
 test('buildOutlineJson 补齐闭合点且不附带外墙段', () => {

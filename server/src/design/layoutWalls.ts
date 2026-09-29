@@ -230,7 +230,6 @@ export function buildWallsFromSegments(
     }
     const n = Math.hypot(nx, ny);
     nx /= n; ny /= n; cc /= group.length;
-    cc = Math.round(cc / WALL_SNAP_TOL) * WALL_SNAP_TOL;
     // 方向 d̂ = (ny, -nx)，与法向量垂直；参数 t 沿 d̂，p0 = c·n 在直线上。
     const proj = (p: Vec2): number => ny * p[0] - nx * p[1];
     const pointAt = (t: number): Vec2 => [cc * nx + t * ny, cc * ny - t * nx];

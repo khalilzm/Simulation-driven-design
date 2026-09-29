@@ -15,15 +15,20 @@ export interface ProgramOutlinePayload {
 }
 
 /** 校验 Agent / 程序写入的 inputs/outline.json，并规范为 layout 用的 outline JSON 字符串。 */
-export function parseProgramOutline(raw: unknown): { ok: true; outlineJson: string } | { ok: false; error: string } {
+export function parseProgramOutline(
+  raw: unknown,
+  lenient = false,
+): { ok: true; outlineJson: string } | { ok: false; error: string } {
   if (!raw || typeof raw !== 'object') return { ok: false, error: 'outline.json 须为 JSON 对象' };
   const o = raw as Record<string, unknown>;
   if (!Array.isArray(o.boundary) || o.boundary.length < 3) {
     return { ok: false, error: 'boundary 须为至少 3 个顶点的数组 [[x,y],…]' };
   }
-  const boundary = closePolygon(o.boundary as Vec2[], 0);
-  const geometryError = polygonGeometryError(boundary);
-  if (geometryError) return { ok: false, error: `boundary ${geometryError}` };
+  const boundary = lenient ? (o.boundary as Vec2[]) : closePolygon(o.boundary as Vec2[], 0);
+  if (!lenient) {
+    const geometryError = polygonGeometryError(boundary);
+    if (geometryError) return { ok: false, error: `boundary ${geometryError}` };
+  }
   const origin = Array.isArray(o.origin) && o.origin.length === 2 ? (o.origin as Vec2) : ([0, 0] as Vec2);
   const units: Unit = o.units === 'mm' ? 'mm' : 'm';
   const bbox = outlineBBox(boundary);
@@ -43,10 +48,10 @@ export function parseProgramOutline(raw: unknown): { ok: true; outlineJson: stri
   };
 }
 
-export function loadProgramOutlineFile(filePath: string): { outlineJson: string } | null {
+export function loadProgramOutlineFile(filePath: string, lenient = false): { outlineJson: string } | null {
   if (!fs.existsSync(filePath)) return null;
   try {
-    const parsed = parseProgramOutline(JSON.parse(fs.readFileSync(filePath, 'utf8')));
+    const parsed = parseProgramOutline(JSON.parse(fs.readFileSync(filePath, 'utf8')), lenient);
     return parsed.ok ? { outlineJson: parsed.outlineJson } : null;
   } catch {
     return null;

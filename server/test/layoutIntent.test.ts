@@ -186,7 +186,7 @@ test('compileIntent 支持 L 形外轮廓', () => {
   assert.ok(touchesY('bed', 8), '卧室应贴北边 maxY=8');
 });
 
-test('compileIntent 产出 L 形合并房间', () => {
+test('compileIntent 精确切分：按面积比例切矩形并贴朝向', () => {
   const parsed = parseDesignIntent({
     schemaVersion: 1,
     rooms: [
@@ -204,8 +204,12 @@ test('compileIntent 产出 L 形合并房间', () => {
   const ctx = createLayoutContext(outline(10, 6));
   const { model } = compileIntent(parsed.intent, ctx, 'rev-lroom');
   const living = model.spaces.find((s) => s.id === 'living');
-  assert.ok(living, '应有客厅');
-  assert.ok(living.boundary.length - 1 >= 6, `客厅应有 L 形边界（>=6 顶点），实际 ${living.boundary.length - 1}`);
+  const bed = model.spaces.find((s) => s.id === 'bed');
+  assert.ok(living && bed);
+  assert.equal(living.boundary.length - 1, 4, '客厅应为矩形（4 顶点）');
+  assert.ok(Math.abs(polygonArea(living.boundary) - 45) < 0.5, `客厅面积应 ≈45，实际 ${polygonArea(living.boundary)}`);
+  assert.ok(living.boundary.some((p) => Math.abs(p[1]) < 1e-6), '客厅应贴南边');
+  assert.ok(bed.boundary.some((p) => Math.abs(p[1] - 6) < 1e-6), '卧室应贴北边');
 });
 
 test('compileIntent 梯形外轮廓产出贴斜边的房间', () => {

@@ -100,7 +100,7 @@ test('门/窗 3D 网格包含门框、窗框', () => {
   ];
   model.doors = [{ id: 'door', openingId: 'door-opening', swing: 'left', analysisProperties: {} }];
   model.windows = [{ id: 'window', openingId: 'window-opening', analysisProperties: {} }];
-  assert.equal(modelToDoorMeshes3D(model).length, 4, '门扇 + 左右竖框 + 上槛');
+  assert.equal(modelToDoorMeshes3D(model).length, 5, '门扇 + 左右竖框 + 上槛 + 把手');
   assert.equal(modelToWindowMeshes3D(model).length, 5, '玻璃 + 左右竖框 + 上下横框');
 });
 

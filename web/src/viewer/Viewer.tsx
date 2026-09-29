@@ -82,22 +82,14 @@ export function Viewer({
           3D
         </button>
       )}
-      {content.kind === 'sketch' && (
-        <div className="viewer-sketch">
-          <img src={content.imageUrl} alt={`参考草图 ${content.name}`} />
-          <p>参考草图 · Agent 将结合对话推断轮廓与分区</p>
-        </div>
-      )}
-      <div className="viewer-canvas" ref={ref} style={content.kind === 'sketch' ? { display: 'none' } : undefined} />
+      <div className="viewer-canvas" ref={ref} />
       {content.kind === 'model' && displayMode === 'usage' && <UsageLegend model={content.model} />}
       {sunlight && <SunlightLegend result={sunlight} />}
       {content.kind === 'model' && displayMode === 'sunlight' && !sunlight && (
         <div className="viewer-sunlight-empty">运行日照后在此查看房间级时长着色</div>
       )}
       <div className="viewer-label">
-        {content.kind === 'sketch'
-          ? '参考草图（可选）— 生成方案后将显示可编译平面'
-          : show3d
+        {show3d
             ? '3D 视图（左键平移，右键旋转，滚轮缩放）'
             : displayMode === 'sunlight'
               ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'

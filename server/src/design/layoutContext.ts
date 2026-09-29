@@ -7,13 +7,17 @@ export interface LayoutContext {
   origin: Vec2;
   units: Unit;
   parent?: SpaceModel;
+  /** 草图直读模式：不补闭合、不校验几何，原样保留大模型返回的轮廓。 */
+  lenient?: boolean;
 }
 
-export function createLayoutContext(outline: string, parent?: SpaceModel): LayoutContext {
+export function createLayoutContext(outline: string, parent?: SpaceModel, lenient = false): LayoutContext {
   const input = JSON.parse(outline) as { boundary: Vec2[]; origin: Vec2; units?: Unit };
-  const boundary = closePolygon(input.boundary, 0);
-  const error = polygonGeometryError(boundary);
-  if (error) throw new Error(`固定轮廓无效：${error}`);
+  const boundary = lenient ? input.boundary : closePolygon(input.boundary, 0);
+  if (!lenient) {
+    const error = polygonGeometryError(boundary);
+    if (error) throw new Error(`固定轮廓无效：${error}`);
+  }
   const units = input.units ?? 'm';
   const scale = units === 'mm' ? 1000 : 1;
   return {
@@ -23,6 +27,7 @@ export function createLayoutContext(outline: string, parent?: SpaceModel): Layou
     origin: [...input.origin],
     units,
     parent,
+    ...(lenient ? { lenient } : {}),
   };
 }
 

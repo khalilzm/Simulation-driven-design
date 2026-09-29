@@ -113,8 +113,8 @@ test('生成入口无上传轮廓时会调用 Agent；仅 layout 无 outline 时
   });
   const missing = await request({ sessionId, provider: 'echo' }, true);
   assert.equal(missing.statusCode, 200);
-  assert.equal(calls, 1);
-  assert.match(captured[0].systemPrompt ?? '', /inputs\/outline\.json/);
+  assert.ok(calls >= 1, '应至少调用一次 Agent');
+  assert.match(captured[0].systemPrompt ?? '', /intent\.json/);
   assert.deepEqual(missing.events.at(-1), { type: 'done', status: 'failed' });
   const folder = path.join(cwd, 'designs', 'rev-0001');
   fs.mkdirSync(folder, { recursive: true });

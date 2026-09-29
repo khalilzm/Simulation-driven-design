@@ -236,6 +236,11 @@ const FRAME_THICKNESS = 0.06;
 const FRAME_PROUD = 0.01;
 const DOOR_FRAME_COLOR = 0x5c3a24;
 const WINDOW_FRAME_COLOR = 0xe6e2d8;
+/** 门把手（横杆）颜色与尺寸 */
+const DOOR_HANDLE_COLOR = 0xcfcfcf;
+const HANDLE_HEIGHT = 1.0;
+const HANDLE_LENGTH = 0.1;
+const HANDLE_THICKNESS = 0.025;
 
 /** 门扇 + 门框（左右竖框 + 上槛）。 */
 export function modelToDoorMeshes3D(model: SpaceModel): PolygonFill[] {
@@ -265,6 +270,21 @@ export function modelToDoorMeshes3D(model: SpaceModel): PolygonFill[] {
     add(frameBox(mx + ux * w / 2, my + uy * w / 2, ux, uy, FRAME_THICKNESS, depth, 0, h), DOOR_FRAME_COLOR, `door3d-frame-r-${i}`);
     // 上槛
     add(frameBox(mx, my, ux, uy, w + FRAME_THICKNESS, depth, h, h + FRAME_THICKNESS), DOOR_FRAME_COLOR, `door3d-frame-t-${i}`);
+    // 把手（横杆，突出门扇室内侧）
+    const nx = -uy, ny = ux;
+    const handleAt = (hx: number, hy: number, id: string) => {
+      add(wallBoxMesh(
+        [hx + nx * DOOR_THICKNESS / 2, hy + ny * DOOR_THICKNESS / 2],
+        [hx + nx * (DOOR_THICKNESS / 2 + HANDLE_LENGTH), hy + ny * (DOOR_THICKNESS / 2 + HANDLE_LENGTH)],
+        HANDLE_THICKNESS, HANDLE_HEIGHT - 0.012, HANDLE_HEIGHT + 0.012,
+      ), DOOR_HANDLE_COLOR, id);
+    };
+    if (door.leafCount === 2) {
+      handleAt(mx - ux * 0.1, my - uy * 0.1, `door3d-handle-l-${i}`);
+      handleAt(mx + ux * 0.1, my + uy * 0.1, `door3d-handle-r-${i}`);
+    } else {
+      handleAt(mx + ux * (w / 2 - 0.1), my + uy * (w / 2 - 0.1), `door3d-handle-${i}`);
+    }
   });
   return fills;
 }
@@ -426,7 +446,7 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
       pushSeg(openings, [ax, ay], [b1x, b1y]);
       pushSeg(openings, [ex, ey], [b2x, b2y]);
       pushArc(openings, ax, ay, ux, uy, vx, vy, r);
-      pushArc(openings, ex, ey, -ux, -uy, -vx, -vy, r);
+      pushArc(openings, ex, ey, -ux, -uy, vx, vy, r);
     } else {
       const bx = ax + vx * r;
       const by = ay + vy * r;

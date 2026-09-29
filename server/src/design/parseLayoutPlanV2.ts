@@ -23,9 +23,10 @@ function vec2(raw: unknown, field: string): Vec2 {
   return [Number(raw[0]), Number(raw[1])];
 }
 
-function boundaryRing(raw: unknown, field: string): Vec2[] {
+function boundaryRing(raw: unknown, field: string, lenient = false): Vec2[] {
   if (!Array.isArray(raw) || raw.length < 3) throw new Error(`${field} 至少需要 3 个顶点`);
-  return closePolygon(raw.map((point, i) => vec2(point, `${field}[${i}]`)), 0);
+  const points = raw.map((point, i) => vec2(point, `${field}[${i}]`));
+  return lenient ? points : closePolygon(points, 0);
 }
 
 function normalizeDoorSwing(doorId: string, raw: unknown): 'left' | 'right' | 'none' {
@@ -48,7 +49,7 @@ export function isLayoutPlanV2(raw: unknown): boolean {
   return true;
 }
 
-export function parseLayoutPlanV2(raw: unknown): import('./layoutPlanTypes').LayoutPlanV2 {
+export function parseLayoutPlanV2(raw: unknown, lenient = false): import('./layoutPlanTypes').LayoutPlanV2 {
   const root = record(raw);
   if (root.schemaVersion !== 2) throw new Error('layout.json 必须包含 schemaVersion: 2');
   for (const field of ['model', 'floor', 'walls', 'allocations', 'splits']) {
@@ -74,7 +75,7 @@ export function parseLayoutPlanV2(raw: unknown): import('./layoutPlanTypes').Lay
       id: item.id,
       usage: item.usage.trim(),
       enclosed: item.enclosed,
-      boundary: boundaryRing(item.boundary, `${item.id}.boundary`),
+      boundary: boundaryRing(item.boundary, `${item.id}.boundary`, lenient),
       targetArea: item.targetArea as number | undefined,
       minArea: item.minArea as number | undefined,
     };
@@ -105,8 +106,11 @@ export function parseLayoutPlanV2(raw: unknown): import('./layoutPlanTypes').Lay
     return root.openings.map((rawOpening) => {
       const item = record(rawOpening);
       if (typeof item.id !== 'string' || !item.id.trim()) throw new Error('opening.id 必须是非空字符串');
-      if (typeof item.position !== 'number' || !Number.isFinite(item.position) || item.position < 0) {
-        throw new Error(`${item.id}.position 必须是非负弧长`);
+      const positionRaw = item.position;
+      if (typeof positionRaw === 'number') {
+        if (!Number.isFinite(positionRaw) || positionRaw < 0) throw new Error(`${item.id}.position 必须是非负弧长`);
+      } else if (positionRaw !== 'start' && positionRaw !== 'center' && positionRaw !== 'end') {
+        throw new Error(`${item.id}.position 必须是 start/center/end 或非负弧长`);
       }
       for (const key of ['width', 'height'] as const) {
         const raw = item[key];
@@ -134,7 +138,7 @@ export function parseLayoutPlanV2(raw: unknown): import('./layoutPlanTypes').Lay
         id: item.id,
         hostBoundaryId: item.hostBoundaryId as string | undefined,
         hostWallId: item.hostWallId as string | undefined,
-        position: item.position,
+        position: positionRaw as number | 'start' | 'center' | 'end',
         width: typeof item.width === 'number' && Number.isFinite(item.width) && item.width > 0 ? item.width : 0,
         height: typeof item.height === 'number' && Number.isFinite(item.height) && item.height > 0 ? item.height : 0,
         sillHeight: item.sillHeight as number | undefined,

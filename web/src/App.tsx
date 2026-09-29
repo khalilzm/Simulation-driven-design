@@ -14,8 +14,8 @@ import {
   saveSunlightConfig,
   streamChat,
   uploadSketch,
-  inputFileUrl,
 } from './api';
+import { chatImageFromInputPath } from './chatImages';
 import type { SunlightRunResponse } from './api';
 import type { DesignSummary } from './api';
 import type { ProviderOption } from './components/ProviderSelect';
@@ -111,11 +111,18 @@ export default function App() {
       const res = await uploadSketch(sid, name, base64);
       setSessionId(res.sessionId);
       setCurrentRevisionId(undefined);
-      setViewerContent({
-        kind: 'sketch',
-        imageUrl: inputFileUrl(res.sessionId, res.file.name),
-        name: res.file.name,
-      });
+      const image = chatImageFromInputPath(res.sessionId, res.file.name);
+      setMessages((previous) => [
+        ...previous,
+        {
+          id: crypto.randomUUID(),
+          role: 'user',
+          content: '',
+          images: [image],
+        },
+      ]);
+      chatScrollRef.current += 1;
+      setChatScrollTick(chatScrollRef.current);
       setNotice(`已上传草图 ${res.file.name}；在对话中说明需求或点击「生成方案」`);
     } catch (err) {
       setNotice(`上传失败: ${err instanceof Error ? err.message : String(err)}`);
@@ -174,12 +181,13 @@ export default function App() {
       await generate(sid, provider, (e) => {
         if (e.type === 'progress') setNotice(e.message);
         if (e.type === 'sketchPreview') {
-          const name = e.path.includes('/') ? e.path.split('/').pop()! : e.path;
-          setViewerContent({
-            kind: 'sketch',
-            imageUrl: `${inputFileUrl(sid, name)}?t=${Date.now()}`,
-            name: name === 'sketch-preview.png' ? '矢量化预览' : name,
-          });
+          const image = chatImageFromInputPath(sid, e.path);
+          setMessages((previous) => [
+            ...previous,
+            { id: crypto.randomUUID(), role: 'assistant', content: '', images: [image], status: 'done' },
+          ]);
+          chatScrollRef.current += 1;
+          setChatScrollTick(chatScrollRef.current);
         }
         if (e.type === 'text') explanation += e.text;
         if (e.type === 'error') generationError = e.message;
@@ -337,12 +345,10 @@ export default function App() {
             break;
           case 'sketchPreview': {
             if (!sid) break;
-            const name = e.path.includes('/') ? e.path.split('/').pop()! : e.path;
-            setViewerContent({
-              kind: 'sketch',
-              imageUrl: `${inputFileUrl(sid, name)}?t=${Date.now()}`,
-              name: name === 'sketch-preview.png' ? '矢量化预览' : name,
-            });
+            const image = chatImageFromInputPath(sid, e.path);
+            patch(assistantId, (x) => ({ ...x, images: [...(x.images ?? []), image] }));
+            chatScrollRef.current += 1;
+            setChatScrollTick(chatScrollRef.current);
             break;
           }
           case 'design': {

@@ -215,7 +215,7 @@ test('铺满要求跨轮次继承', () => {
   assert.equal(resolveFullCoverage('不用铺满', true), false);
 });
 
-test('无初始轮廓时 Agent 写入 outline 与 intent 可编译', async (t) => {
+test('无初始轮廓时 Agent 只写 intent 可编译（外轮廓由程序反推）', async (t) => {
   const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-program-turn-'));
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   const outlineCtx = { source: 'none' as const };
@@ -225,17 +225,7 @@ test('无初始轮廓时 Agent 写入 outline 与 intent 可编译', async (t) =
   let calls = 0;
   const adapter: ProviderAdapter = { id: 'test', async run(input) {
     calls++;
-    if (calls === 1) {
-      assert.match(input.systemPrompt ?? '', /只写外轮廓|outline\.json/);
-      fs.mkdirSync(path.join(cwd, 'inputs'), { recursive: true });
-      fs.writeFileSync(path.join(cwd, 'inputs', 'outline.json'), JSON.stringify({
-        boundary: [[0, 0], [10, 0], [10, 8], [0, 8]],
-        origin: [0, 0],
-        units: 'm',
-        assumptions: ['矩形 10×8m'],
-      }));
-      return { failed: false };
-    }
+    assert.match(input.systemPrompt ?? '', /intent\.json/);
     fs.mkdirSync(folder, { recursive: true });
     fs.writeFileSync(intentPath, JSON.stringify(validIntent()));
     return { failed: false };
@@ -244,5 +234,32 @@ test('无初始轮廓时 Agent 写入 outline 与 intent 可编译', async (t) =
     cwd, outline: outlineCtx, revisionId: 'rev-0001', message: '小型培训空间', requireDesign: true,
   }, adapter, () => {});
   assert.equal(result.failed, false);
+  assert.equal(calls, 1, '首轮应只调用一次 Agent（只写 intent）');
+  assert.equal(fs.existsSync(modelPath), true);
+});
+
+test('无初始轮廓时 intent 校验失败会用 intent-only prompt 重试', async (t) => {
+  const cwd = fs.mkdtempSync(path.join(os.tmpdir(), 'sdd-program-turn-'));
+  t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
+  const outlineCtx = { source: 'none' as const };
+  const folder = path.join(cwd, 'designs', 'rev-0001');
+  const intentPath = path.join(folder, 'intent.json');
+  const modelPath = path.join(folder, 'model.json');
+  let calls = 0;
+  const adapter: ProviderAdapter = { id: 'test', async run(input) {
+    calls++;
+    fs.mkdirSync(folder, { recursive: true });
+    if (calls === 1) {
+      fs.writeFileSync(intentPath, JSON.stringify({ schemaVersion: 1, rooms: [], adjacencies: [], daylight: [], assumptions: [], unmetRequirements: [] }));
+    } else {
+      fs.writeFileSync(intentPath, JSON.stringify(validIntent()));
+    }
+    return { failed: false };
+  } };
+  const result = await runSpaceTurn({
+    cwd, outline: outlineCtx, revisionId: 'rev-0001', message: '小型培训空间', requireDesign: true,
+  }, adapter, () => {});
+  assert.equal(result.failed, false);
+  assert.equal(calls, 2, '首轮失败后应重试一次且不抛异常');
   assert.equal(fs.existsSync(modelPath), true);
 });

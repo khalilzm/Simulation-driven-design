@@ -3,10 +3,16 @@ import type { SpaceModel, SunlightResult } from '@sdd/shared';
 export type ModelDisplayMode = 'usage' | 'sunlight';
 export type ModelViewMode = ModelDisplayMode | '3d';
 
+export interface ChatImageAttachment {
+  url: string;
+  alt: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  images?: ChatImageAttachment[];
   status?: 'thinking' | 'done' | 'failed';
   progress?: string;
   thinking?: string;
@@ -19,6 +25,5 @@ export type DxfEntity =
 
 export type ViewerContent =
   | { kind: 'empty' }
-  | { kind: 'sketch'; imageUrl: string; name: string }
   | { kind: 'dxf'; entities: DxfEntity[] }
   | { kind: 'model'; model: SpaceModel; view?: ModelViewMode; sunlight?: SunlightResult };

@@ -156,6 +156,7 @@ function assignRooms(
   const used = new Set<number>();
   const placed: PlacedRoom[] = [];
   const placedByRoom = new Map<string, PlacedRoom>();
+  const eatenByRoom = new Map<PlacedRoom, number[]>();
   const adjMap = buildRelationMap(adjacencies, 'adjacent');
   const sepMap = buildRelationMap(adjacencies, 'separated');
   const doorMap = new Map<string, Set<string>>();
@@ -177,7 +178,17 @@ function assignRooms(
     return dir ? sideCount[dir] : Number.POSITIVE_INFINITY;
   };
 
-  const ordered = orderByAdjacency(rooms, adjMap, scarcity);
+  // 比例放大 target 填满可用单元（留 15% 缓冲吸收贪心取整误差），保持各房间相对比例。
+  const rawTargets = rooms.map((r) => r.area.target ?? r.area.min ?? 10);
+  const totalTarget = rawTargets.reduce((s, t) => s + t, 0);
+  const regionArea = cells.reduce((s, c) => s + c.areaM2, 0);
+  const fillTarget = regionArea * 0.85;
+  const factor = totalTarget > 0 && fillTarget > totalTarget ? fillTarget / totalTarget : 1;
+  const scaledRooms = factor === 1
+    ? rooms
+    : rooms.map((r, i) => ({ ...r, area: { ...r.area, target: Math.max(rawTargets[i] * factor, r.area.min ?? 0) } }));
+
+  const ordered = orderByAdjacency(scaledRooms, adjMap, scarcity);
 
   for (const room of ordered) {
     const target = room.area.target ?? room.area.min ?? 10;
@@ -242,17 +253,130 @@ function assignRooms(
       const p = { room, boundary };
       placed.push(p);
       placedByRoom.set(room.id, p);
+      eatenByRoom.set(p, eaten);
     }
   }
+
+  // 回填空余：反复让相对最「欠面积」且能扩展的房间并入一个相邻单元，按比例填满该区域。
+  for (;;) {
+    let best: PlacedRoom | null = null;
+    let bestRatio = Infinity;
+    let bestCell = -1;
+    for (const p of placed) {
+      const target = p.room.area.target ?? p.room.area.min ?? 10;
+      const area = eatenByRoom.get(p)!.reduce((s, ci) => s + cells[ci].areaM2, 0);
+      const ratio = area / Math.max(target, 1e-9);
+      if (ratio >= bestRatio) continue;
+      const cellIndex = cells.findIndex((c, i) => !used.has(i) && sharedSegments(c.boundary, p.boundary).length > 0);
+      if (cellIndex >= 0) { bestRatio = ratio; best = p; bestCell = cellIndex; }
+    }
+    if (!best || bestCell < 0) break;
+    used.add(bestCell);
+    const eaten = eatenByRoom.get(best)!;
+    eaten.push(bestCell);
+    const combined = unionRings(eaten.map((ci) => cells[ci].boundary));
+    if (combined.length) best.boundary = cleanRing(combined[0][0]);
+  }
+
   return placed;
 }
 
-/** 在指定区域内过分割并让房间吃单元（无走廊骨架的填充路径）。 */
+function rectToRing(rect: Rect): Vec2[] {
+  return [[rect.x0, rect.y0], [rect.x1, rect.y0], [rect.x1, rect.y1], [rect.x0, rect.y1], [rect.x0, rect.y0]];
+}
+
+function roomArea(r: RoomIntent): number {
+  return Math.max(r.area.target ?? r.area.min ?? 10, 1e-6);
+}
+
+function areaSum(rooms: RoomIntent[]): number {
+  return rooms.reduce((s, r) => s + roomArea(r), 0);
+}
+
+/** 外轮廓是否为矩形（包围盒面积 ≈ 多边形面积）。 */
+function isRectangular(boundary: Vec2[]): boolean {
+  const b = boundsOf(boundary)!;
+  const bboxArea = (b.maxX - b.minX) * (b.maxY - b.minY);
+  return Math.abs(bboxArea - polygonArea(boundary)) < 1e-6 * Math.max(bboxArea, 1);
+}
+
+/**
+ * 精确切分：按面积比例递归二分矩形区域。面积严格贴合 target 比例、铺满、正交矩形；
+ * 南/北/西/东朝向各自贴到对应边，其余房间按面积平衡，并尽量让 separated 房间不相邻。
+ */
+function partitionRooms(rooms: RoomIntent[], rect: Rect, adjacencies: AdjacencyIntent[] = []): { room: RoomIntent; rect: Rect }[] {
+  if (!rooms.length) return [];
+  if (rooms.length === 1) return [{ room: rooms[0], rect }];
+
+  const sepMap = buildRelationMap(adjacencies, 'separated');
+  const isSeparated = (a: RoomIntent, b: RoomIntent): boolean => sepMap.get(a.id)?.has(b.id) ?? false;
+
+  const dirOf = (r: RoomIntent): Cardinal | undefined =>
+    r.orientation?.length ? cardinal(r.orientation[0]) : undefined;
+  const hasSouth = rooms.some((r) => dirOf(r) === 'south');
+  const hasNorth = rooms.some((r) => dirOf(r) === 'north');
+  const hasEast = rooms.some((r) => dirOf(r) === 'east');
+  const hasWest = rooms.some((r) => dirOf(r) === 'west');
+
+  const width = rect.x1 - rect.x0;
+  const height = rect.y1 - rect.y0;
+  const horizontal = (hasSouth && hasNorth) || (!hasEast && !hasWest && height >= width);
+
+  const assign = (r: RoomIntent, groupA: RoomIntent[], groupB: RoomIntent[]): void => {
+    const sepA = groupA.some((g) => isSeparated(r, g));
+    const sepB = groupB.some((g) => isSeparated(r, g));
+    if (sepA && !sepB) groupB.push(r);
+    else if (sepB && !sepA) groupA.push(r);
+    else (areaSum(groupA) <= areaSum(groupB) ? groupA : groupB).push(r);
+  };
+
+  let groupA: RoomIntent[];
+  let groupB: RoomIntent[];
+  if (horizontal) {
+    groupA = rooms.filter((r) => dirOf(r) === 'south');
+    groupB = rooms.filter((r) => dirOf(r) === 'north');
+    for (const r of rooms) {
+      if (dirOf(r) === 'south' || dirOf(r) === 'north') continue;
+      assign(r, groupA, groupB);
+    }
+  } else {
+    groupA = rooms.filter((r) => dirOf(r) === 'west');
+    groupB = rooms.filter((r) => dirOf(r) === 'east');
+    for (const r of rooms) {
+      if (dirOf(r) === 'west' || dirOf(r) === 'east') continue;
+      assign(r, groupA, groupB);
+    }
+  }
+
+  if (!groupA.length || !groupB.length) {
+    groupA = [rooms[0]];
+    groupB = [];
+    for (const r of rooms.slice(1)) assign(r, groupA, groupB);
+  }
+
+  const areaA = areaSum(groupA);
+  const ratio = areaA / Math.max(areaA + areaSum(groupB), 1e-9);
+
+  let rectA: Rect, rectB: Rect;
+  if (horizontal) {
+    const splitY = rect.y0 + height * ratio;
+    rectA = { x0: rect.x0, y0: rect.y0, x1: rect.x1, y1: splitY };
+    rectB = { x0: rect.x0, y0: splitY, x1: rect.x1, y1: rect.y1 };
+  } else {
+    const splitX = rect.x0 + width * ratio;
+    rectA = { x0: rect.x0, y0: rect.y0, x1: splitX, y1: rect.y1 };
+    rectB = { x0: splitX, y0: rect.y0, x1: rect.x1, y1: rect.y1 };
+  }
+
+  return [...partitionRooms(groupA, rectA, adjacencies), ...partitionRooms(groupB, rectB, adjacencies)];
+}
+
+/** 在矩形区域内按面积精确切分房间（无走廊骨架的填充路径）。 */
 function layoutFill(rooms: RoomIntent[], region: Vec2[], floorBounds: Bounds, fallback: number, scale: number, adjacencies: AdjacencyIntent[], doors: DoorIntent[], references: { id: string; boundary: Vec2[] }[]): PlacedRoom[] {
   if (!rooms.length) return [];
-  const cellRings = overPartition(region, Math.max(rooms.length * 2, 2));
-  const cells = buildCells(cellRings, floorBounds, scale);
-  return assignRooms(rooms, cells, adjacencies, doors, references);
+  const b = boundsOf(region)!;
+  const rect: Rect = { x0: b.minX, y0: b.minY, x1: b.maxX, y1: b.maxY };
+  return partitionRooms(rooms, rect, adjacencies).map(({ room, rect }) => ({ room, boundary: rectToRing(rect) }));
 }
 
 /** 放置一条贯穿的走廊，position 决定其沿主方向的位置。 */
@@ -387,6 +511,19 @@ function exteriorWindows(
   return { boundaries, openings, windows, warnings };
 }
 
+/** 从意图反推外轮廓矩形：房间面积之和 + 20% 缓冲（覆盖走廊与墙体占位）。 */
+export function deriveOutline(intent: DesignIntent): { boundary: Vec2[]; bbox: { width: number; height: number; area: number } } {
+  const roomArea = intent.rooms.reduce((s, r) => s + (r.area.target ?? r.area.min ?? 10), 0);
+  const totalArea = Math.max(roomArea * 1.2, 9);
+  const circ = intent.circulation?.[0];
+  const aspect = circ?.orientation === 'vertical' ? 3 / 4 : 4 / 3;
+  const W = Math.sqrt(totalArea * aspect);
+  const H = W / aspect;
+  const rw = Math.max(3, Math.round(W * 2) / 2);
+  const rh = Math.max(3, Math.round(H * 2) / 2);
+  return { boundary: [[0, 0], [rw, 0], [rw, rh], [0, rh], [0, 0]], bbox: { width: rw, height: rh, area: rw * rh } };
+}
+
 /** 布局器：把无几何的意图编译成带坐标的 LayoutPlanV2（非矩形房间）。 */
 export function layoutFromIntent(intent: DesignIntent, ctx: LayoutContext): IntentLayoutOutput {
   const scale = ctx.units === 'mm' ? 1000 : 1;
@@ -397,13 +534,32 @@ export function layoutFromIntent(intent: DesignIntent, ctx: LayoutContext): Inte
   const warnings: string[] = [];
   const fallback = defaultArea(intent.rooms);
 
+  // 房间朝向并入窗户朝向：有北窗的房间应贴北边，否则窗无法落地。
+  const winOrient = new Map<string, Cardinal[]>();
+  for (const win of intent.windows ?? []) {
+    const c = cardinal(win.orientation);
+    const list = winOrient.get(win.spaceId) ?? [];
+    if (!list.includes(c)) list.push(c);
+    winOrient.set(win.spaceId, list);
+  }
+  const layoutRooms = intent.rooms.map((room) => {
+    const extra = winOrient.get(room.id);
+    if (!extra?.length) return room;
+    const existing = (room.orientation ?? []).map(cardinal).filter((c) => !extra.includes(c));
+    return { ...room, orientation: [...extra, ...existing] };
+  });
+
   let placed: PlacedRoom[];
   if (intent.circulation?.length) {
-    placed = layoutWithCirculation(intent, floorBounds, scale);
+    placed = layoutWithCirculation({ ...intent, rooms: layoutRooms }, floorBounds, scale);
+  } else if (isRectangular(floor)) {
+    placed = partitionRooms(layoutRooms, { x0: floorBounds.minX, y0: floorBounds.minY, x1: floorBounds.maxX, y1: floorBounds.maxY }, intent.adjacencies)
+      .map(({ room, rect }) => ({ room, boundary: rectToRing(rect) }));
   } else {
-    const cellRings = overPartition(floor, Math.max(intent.rooms.length * 2, 2));
+    // 非矩形外轮廓（异形 program outline）回退：cell 切分 + 吃单元。
+    const cellRings = overPartition(floor, Math.max(layoutRooms.length * 2, 2));
     const cells = buildCells(cellRings, floorBounds, scale);
-    placed = assignRooms(intent.rooms, cells, intent.adjacencies, intent.doors ?? [], []);
+    placed = assignRooms(layoutRooms, cells, intent.adjacencies, intent.doors ?? [], []);
   }
 
   const openId = intent.circulation?.[0]?.id ?? intent.rooms.find((room) => room.privacy === 'public')?.id ?? intent.rooms[0].id;

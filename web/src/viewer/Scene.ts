@@ -129,21 +129,22 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       const is3d = content.view === '3d';
       const sun = content.sunlight;
       const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun) : [];
+      const meshEdges3d = { meshEdges: true as const };
       if (is3d) {
         for (const fill of modelToSpaceFills(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays);
+          addSpaceFillMesh(viewer, fill, overlays, meshEdges3d);
           added = true;
         }
         for (const fill of modelToWallBoxes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true, ...meshEdges3d });
           added = true;
         }
         for (const fill of modelToDoorMeshes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true, ...meshEdges3d });
           added = true;
         }
         for (const fill of modelToWindowMeshes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, ...meshEdges3d });
           added = true;
         }
       } else if (useSunlight && gridFills.length) {
@@ -179,6 +180,7 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       viewer.navigation.setControlMode(navigationMode);
       viewer.navigation.setControlRotate(navigationMode === ViewType.ThreeD);
     }
+    viewer.setEdgeDetection({ enabled: false });
   };
 
   return {

@@ -23,8 +23,8 @@ export interface LayoutOpeningSpec {
   id: string;
   hostBoundaryId?: string;
   hostWallId?: string;
-  /** 洞口中心距所引用墙/边界起点的弧长（model.units） */
-  position: number;
+  /** 洞口中心位置：'start'|'center'|'end'（沿边界 25%/50%/75%）或距起点弧长（model.units） */
+  position: number | 'start' | 'center' | 'end';
   width: number;
   height: number;
   sillHeight?: number;

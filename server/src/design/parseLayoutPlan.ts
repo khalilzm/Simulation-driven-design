@@ -77,7 +77,7 @@ function parseTopologySpaces(raw: unknown, topo: FloorPlanTopology): LayoutSpace
 }
 
 /** 将 schemaVersion 3（拓扑引用）展开为 v2 坐标计划，供既有编译管线使用。 */
-export function expandLayoutPlanV3(raw: unknown, floorBoundary: Vec2[]): LayoutPlanV2 {
+export function expandLayoutPlanV3(raw: unknown, floorBoundary: Vec2[], lenient = false): LayoutPlanV2 {
   const root = record(raw);
   if (root.schemaVersion !== 3) throw new Error('expandLayoutPlanV3 需要 schemaVersion: 3');
   for (const field of ['model', 'floor', 'walls', 'allocations', 'splits']) {
@@ -96,7 +96,7 @@ export function expandLayoutPlanV3(raw: unknown, floorBoundary: Vec2[]): LayoutP
     })),
     boundaries,
   };
-  return parseLayoutPlanV2(v2Shaped);
+  return parseLayoutPlanV2(v2Shaped, lenient);
 }
 
 export function isLayoutPlanV3(raw: unknown): boolean {
@@ -104,8 +104,8 @@ export function isLayoutPlanV3(raw: unknown): boolean {
   return (raw as Record<string, unknown>).schemaVersion === 3;
 }
 
-export function parseLayoutPlan(raw: unknown, floorBoundary: Vec2[]): LayoutPlanV2 {
-  const plan = isLayoutPlanV3(raw) ? expandLayoutPlanV3(raw, floorBoundary) : parseLayoutPlanV2(raw);
+export function parseLayoutPlan(raw: unknown, floorBoundary: Vec2[], lenient = false): LayoutPlanV2 {
+  const plan = isLayoutPlanV3(raw) ? expandLayoutPlanV3(raw, floorBoundary, lenient) : parseLayoutPlanV2(raw, lenient);
   enrichLayoutPlanWithCatalog(plan);
   return plan;
 }

@@ -4,7 +4,6 @@ import { closePolygon, outlineBBox } from './model/geometry';
 import { floorCornerVertices, floorEdgeSegments, type LayoutContext } from './design/layoutContext';
 import { floorTopologyForPrompt } from './design/floorPlanTopology';
 import { createLayoutContext } from './design/layoutContext';
-import { PROGRAM_OUTLINE_REL } from './design/programOutline';
 
 export interface OutlineContext {
   source: 'parent' | 'program' | 'none';
@@ -31,43 +30,11 @@ export function buildOutlineJson(outline: {
   return JSON.stringify({ ...outline, boundary: closePolygon(outline.boundary, 0) });
 }
 
-function buildDesignFromProgramPrompt(revisionId: string, ctx: OutlineContext): string {
-  const hints = ctx.inputHints
-    ? `用户已上传手绘草图（cwd 内 ${ctx.inputHints}）。请用 Read/图像能力阅读草图，结合自然语言推断外轮廓尺度与形状；草图不是 CAD，勿假设已有矢量轮廓。`
-    : '用户未上传草图；仅根据自然语言推断合理建筑外轮廓与面积。';
-  return `你是建筑方案 Design Layer：自然语言即可起方案，手绘草图可选。服务端编译几何；你不要写 model.json。
-
-${hints}
-
-本轮须完成两步（均写在本会话 Agent 工作目录 cwd 的相对路径）：
-
-1) 先写 **${PROGRAM_OUTLINE_REL}**（JSON）：
-   - boundary: [[x,y],…] 闭合外轮廓本地坐标（至少 3 点；可矩形、L 形等；单位米，合理估计面积）
-   - origin: [0,0]
-   - units: "m"
-   - assumptions: 字符串数组，写明尺度/形状假设
-   - 勿写 bbox（服务端会算）
-
-2) 再写 **designs/${revisionId}/layout.json**（schemaVersion 3 拓扑引用，推荐）：
-   - vertices / spaces.loop / boundaries.from-to；禁止手写 [x,y] 坐标
-   - openings 优先 typeId；doors/windows 可省略 swing/尺寸由目录填充
-   - 禁止 allocations、regionIds、splits、walls、model.json
-
-禁止写入仓库根 designs/、其它 session 的 workspaces/…/designs/ 或使用指向上述的绝对路径。
-
-${ctx.requireFullCoverage ? '布局须铺满 floor 内面积。' : '可暂留未分配面积并在 assumptions/unmetRequirements 说明。'}
-
-提交后用 2～3 句说明轮廓假设与功能分区。`;
-}
-
 /** Agent 提交 schemaVersion 3（拓扑引用，推荐）或 2 的 layout.json；几何由服务端编译。 */
-export function buildSpacePrompt(revisionId: string, ctx?: OutlineContext): string {
-  if (!ctx?.outline) {
-    return buildDesignFromProgramPrompt(revisionId, ctx ?? { source: 'none' });
-  }
-  const layout = ctx.layout ?? createLayoutContext(ctx.outline, ctx.currentModel);
+export function buildSpacePrompt(revisionId: string, ctx: OutlineContext): string {
+  const layout = ctx.layout ?? createLayoutContext(ctx.outline!, ctx.currentModel);
   const parent = layout.parent;
-  const outline = JSON.parse(ctx.outline);
+  const outline = JSON.parse(ctx.outline!);
   const floorBoundary = closePolygon(layout.floor.boundary, 0);
   const topology = floorTopologyForPrompt(floorBoundary);
   const corners = floorCornerVertices(floorBoundary);
@@ -109,17 +76,17 @@ ${JSON.stringify({ origin: layout.origin, topology, boundary: outline.boundary }
 围合与门窗：
 - 共享边默认：任一侧 enclosed:true → 实体墙；两侧 open → 开放。可用 boundaries 显式 kind:"wall"|"open"。
 - 外边界：boundaries 一侧 spaceId、一侧 outside，kind:wall；入口/外窗用 hostBoundaryId。
-- openings 优先写 typeId（见 componentTypes），width/height 可省略由目录填充；position 为洞口中心沿宿主的弧长；落地门 sillHeight=0。
+- openings：hostBoundaryId 指向 boundaries 中的 wall 边界（外门/外窗一侧用 outside）；position 用 "start"|"center"|"end"（沿边界 25%/50%/75% 处，推荐）或弧长数字；width/height 可省略由 typeId 目录填充；落地门 sillHeight=0。
 - doors 引用 openingId；可写 typeId 与 connects，swing/leafCount 可省略（由门规格默认）；swing 仅 left/right/none。
 - windows 引用 openingId，可写 typeId（窗规格）。
 - componentTypes（门/窗）：${JSON.stringify(catalogOpenings)}
 - 封闭空间须经门或 open 边界到达开放区；有 outside 入口时全屋可达。
 
 ${parent ? `当前空间（全量提交；未改 id/boundary 须原样保留）：\n${JSON.stringify(currentSpaces)}\n保留墙：${JSON.stringify(lockedWalls)}\n保留洞口：${JSON.stringify(knownOpenings)}\n可编辑 v2 构件：${JSON.stringify(editable)}\n` : ''}
-${ctx.requireFullCoverage ? '须铺满 floor 内面积（含交通/预留 space）。' : '可暂留未分配面积并说明。'} minArea、targetArea 均为参考面积（不足时写入 warnings，不导致校验失败）；无法满足的需求写入 unmetRequirements。
+${ctx.requireFullCoverage ? '须把 floor 内面积完整分配到带用途的 space（含交通/过渡/预留区）；spaces 边界逐边拼合、完全覆盖轮廓，不允许留无归属的空余。' : '可暂留未分配面积，但须为其写明用途或写入 unmetRequirements。'} minArea、targetArea 均为参考面积（不足时写入 warnings，不导致校验失败）；无法满足的需求写入 unmetRequirements。
 
-示例（schemaVersion 3，10×8 m 矩形；竖向分界 x=5）：
-{"schemaVersion":3,"vertices":[{"id":"mid_s","edge":0,"t":0.5},{"id":"mid_n","edge":2,"t":0.5}],"spaces":[{"id":"hall","usage":"门厅","enclosed":false,"loop":["V0","mid_s","mid_n","V3"]},{"id":"studio","usage":"教室","enclosed":true,"loop":["mid_s","V1","V2","mid_n"]}],"boundaries":[{"id":"split","from":"mid_s","to":"mid_n","kind":"wall","leftSpaceId":"hall","rightSpaceId":"studio"}],"openings":[],"doors":[],"windows":[],"assumptions":[],"unmetRequirements":[]}
+示例（schemaVersion 3，10×8 m 矩形；竖向分界 x=5，含门与南窗）：
+{"schemaVersion":3,"vertices":[{"id":"mid_s","edge":0,"t":0.5},{"id":"mid_n","edge":2,"t":0.5}],"spaces":[{"id":"hall","usage":"门厅","enclosed":false,"loop":["V0","mid_s","mid_n","V3"]},{"id":"studio","usage":"教室","enclosed":true,"loop":["mid_s","V1","V2","mid_n"]}],"boundaries":[{"id":"split","from":"mid_s","to":"mid_n","kind":"wall","leftSpaceId":"hall","rightSpaceId":"studio"},{"id":"south-wall","from":"mid_s","to":"V1","kind":"wall","leftSpaceId":"outside","rightSpaceId":"studio"}],"openings":[{"id":"door-open","hostBoundaryId":"split","position":"center","width":1,"height":2.1},{"id":"win-open","hostBoundaryId":"south-wall","position":"center","width":2,"height":1.2,"sillHeight":0.9}],"doors":[{"id":"d1","openingId":"door-open","connects":["hall","studio"]}],"windows":[{"id":"w1","openingId":"win-open"}],"assumptions":[],"unmetRequirements":[]}
 
 参考坐标（仅理解 topology，勿写入 layout）：corners=${JSON.stringify(corners)} edges=${JSON.stringify(edges.map(([a, b]) => [a, b]))}
 
@@ -140,6 +107,3 @@ export function buildValidationCorrectionMessage(revisionId: string, errors: str
     '保留无关 id，简述修正。',
   ].join('\n');
 }
-
-/** @deprecated 使用 buildValidationCorrectionMessage */
-export const buildGeometryCorrectionMessage = buildValidationCorrectionMessage;
