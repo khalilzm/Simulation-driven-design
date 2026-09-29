@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { StreamEvent } from '@sdd/shared';
+import type { AgentTurnTimings, StreamEvent } from '@sdd/shared';
 import {
   Agent,
   configureCursorSdk,
@@ -12,6 +12,7 @@ import { ensureCursorAuth, explicitCursorApiKey } from './cursorAuth';
 import { evError, evProgress, evText } from './normalize';
 import type { ChatTurnInput, ProviderAdapter, TurnResult } from './types';
 import type { AgentOptions, ToolName } from '@cursor/sdk';
+import { imageAttachments } from './images';
 
 const HEARTBEAT_MS = 20_000;
 const DEFAULT_MODEL = 'composer-2.5';
@@ -23,11 +24,12 @@ export function buildCursorAgentOptions(
   modelId: string,
   cwd: string,
   apiKey?: string,
+  imagePhase?: ChatTurnInput['imagePhase'],
 ): AgentOptions {
   const options: AgentOptions = {
     model: { id: modelId },
     local: { cwd, settingSources: [] },
-    tools: SPACE_DESIGN_ALLOWED_TOOLS,
+    tools: imagePhase === 'extract' ? ['edit'] : SPACE_DESIGN_ALLOWED_TOOLS,
   };
   if (apiKey) options.apiKey = apiKey;
   return options;
@@ -71,6 +73,13 @@ async function disposeAgent(agent: Awaited<ReturnType<typeof Agent.create>>): Pr
 export const cursorAdapter: ProviderAdapter = {
   id: 'cursor',
   async run(input, emit, signal): Promise<TurnResult> {
+    const started = performance.now();
+    const timings: AgentTurnTimings = { totalMs: 0 };
+    const measure = async <T>(key: 'authMs' | 'initializeMs' | 'attachmentsMs' | 'sendMs' | 'runMs' | 'disposeMs', action: () => T | Promise<T>): Promise<T> => {
+      const start = performance.now();
+      try { return await action(); }
+      finally { timings[key] = Math.round((performance.now() - start) * 1000) / 1000; }
+    };
     ensureCursorStore();
 
     const modelId = input.model || config.cursorModel || DEFAULT_MODEL;
@@ -84,13 +93,13 @@ export const cursorAdapter: ProviderAdapter = {
     let lastActivity = Date.now();
 
     try {
-      await ensureCursorAuth(emit);
+      await measure('authMs', () => ensureCursorAuth(emit));
 
-      const baseOptions = buildCursorAgentOptions(modelId, input.cwd, explicitCursorApiKey());
+      const baseOptions = buildCursorAgentOptions(modelId, input.cwd, explicitCursorApiKey(), input.imagePhase);
 
-      agent = input.nativeSessionId
-        ? await Agent.resume(input.nativeSessionId, baseOptions)
-        : await Agent.create(baseOptions);
+      agent = await measure('initializeMs', () => input.nativeSessionId
+        ? Agent.resume(input.nativeSessionId, baseOptions)
+        : Agent.create(baseOptions));
 
       nativeSessionId = agent.agentId;
 
@@ -99,7 +108,12 @@ export const cursorAdapter: ProviderAdapter = {
         emit({ type: 'progress', message: '模型推理中，请稍候…' });
       }, HEARTBEAT_MS);
 
-      const run = await agent.send(buildCursorPrompt(input));
+      const prompt = buildCursorPrompt(input);
+      const images = await measure('attachmentsMs', () => imageAttachments(input));
+      const sendStarted = performance.now();
+      const activeAgent = agent;
+      const run = await measure('sendMs', () => activeAgent.send(images.length ? { text: prompt, images } : prompt));
+      let lastToolCompleted: number | undefined;
       let aborting = false;
 
       const onAbort = () => {
@@ -112,19 +126,26 @@ export const cursorAdapter: ProviderAdapter = {
       }
 
       try {
-        for await (const event of run.stream()) {
-          lastActivity = Date.now();
-          mapStreamEvent(event, emit);
-          if (aborting) break;
-        }
+        await measure('runMs', async () => {
+          for await (const event of run.stream()) {
+            lastActivity = Date.now();
+            if (timings.firstContentMs === undefined && (event.type === 'assistant' || event.type === 'thinking' || event.type === 'tool_call')) {
+              timings.firstContentMs = Math.round((performance.now() - sendStarted) * 1000) / 1000;
+            }
+            if (event.type === 'tool_call' && event.status === 'completed') lastToolCompleted = performance.now();
+            mapStreamEvent(event, emit);
+            if (aborting) break;
+          }
 
-        const result = await run.wait();
-        if (result.status === 'error') {
-          emit(evError(result.error?.message || 'Cursor Agent 返回错误'));
-          failed = true;
-        } else if (result.status === 'cancelled') {
-          failed = true;
-        }
+          const result = await run.wait();
+          if (lastToolCompleted !== undefined) timings.afterLastToolMs = Math.round((performance.now() - lastToolCompleted) * 1000) / 1000;
+          if (result.status === 'error') {
+            emit(evError(result.error?.message || 'Cursor Agent 返回错误'));
+            failed = true;
+          } else if (result.status === 'cancelled') {
+            failed = true;
+          }
+        });
       } finally {
         signal?.removeEventListener('abort', onAbort);
       }
@@ -139,9 +160,14 @@ export const cursorAdapter: ProviderAdapter = {
       failed = true;
     } finally {
       if (heartbeat) clearInterval(heartbeat);
-      if (agent) await disposeAgent(agent);
+      if (agent) {
+        const activeAgent = agent;
+        try { await measure('disposeMs', () => disposeAgent(activeAgent)); }
+        catch (error) { emit(evError(error instanceof Error ? error.message : String(error))); failed = true; }
+      }
+      timings.totalMs = Math.round((performance.now() - started) * 1000) / 1000;
     }
 
-    return { nativeSessionId, failed };
+    return { nativeSessionId, failed, timings };
   },
 };

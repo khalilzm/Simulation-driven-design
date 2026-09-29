@@ -9,12 +9,15 @@ import { createSession, loadSession, saveSession } from '../sessions/store';
 import { isAcceptedDesign, listDesigns, loadDesign, nextRevisionId } from '../model/store';
 import { loadOutlineContext, resolveFullCoverage } from '../design/outlineContext';
 import { runSpaceTurn } from '../design/runSpaceTurn';
+import { loadSketch, resolveSketch } from '../sketch/store';
+import { readSketchReport, runSketchTurn } from '../sketch/runSketchTurn';
 
 /** 对话和“生成方案”共享会话、轮廓准备及 Agent 执行。 */
 export async function handleSpaceTurn(req: Request, res: Response, generate = false): Promise<void> {
-  const { provider, sessionId, message, parentRevisionId, requireFullCoverage } = (req.body ?? {}) as {
+  const { provider, sessionId, message, parentRevisionId, requireFullCoverage, mode, sketchId } = (req.body ?? {}) as {
     provider?: unknown; sessionId?: unknown; message?: unknown;
     parentRevisionId?: unknown; requireFullCoverage?: unknown;
+    mode?: unknown; sketchId?: unknown;
   };
   if (!isValidProvider(provider)) {
     res.status(400).json({ error: 'invalid provider' });
@@ -34,15 +37,32 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
     return;
   }
   const id = typeof sessionId === 'string' && sessionId ? sessionId : randomUUID();
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) { res.status(400).json({ error: 'invalid sessionId' }); return; }
+  if (mode !== undefined && !['sketch', 'generate', 'edit'].includes(String(mode))) { res.status(400).json({ error: 'invalid mode' }); return; }
+  if (sketchId !== undefined && typeof sketchId !== 'string') { res.status(400).json({ error: 'invalid sketchId' }); return; }
   const session = loadSession(id) ?? createSession(id, provider);
   if (session.provider !== provider) {
     res.status(409).json({ error: 'session provider mismatch' });
     return;
   }
   const cwd = path.join(workspacesDir, id);
-  const parentId = parentRevisionId === null ? undefined
+  let source;
+  try {
+    source = mode === 'generate' || mode === 'edit'
+      ? loadSketch(cwd, typeof sketchId === 'string' ? sketchId : undefined)
+      : await resolveSketch(cwd, typeof sketchId === 'string' ? sketchId : undefined);
+  } catch (error) {
+    res.status(400).json({ error: `读取草图失败：${error instanceof Error ? error.message : String(error)}` }); return;
+  }
+  const sketchMode = mode === 'sketch' || (mode === undefined && !!source && !parentRevisionId);
+  if (sketchMode && !source) { res.status(400).json({ error: '未找到所选草图，请重新上传或选择图片' }); return; }
+  const previousSketch = sketchMode && typeof parentRevisionId === 'string' ? readSketchReport(cwd, parentRevisionId) : null;
+  if (previousSketch && previousSketch.source.id !== source?.id) { res.status(409).json({ error: '草图与待修正版本不匹配' }); return; }
+  if (sketchMode && parentRevisionId && !previousSketch) { res.status(409).json({ error: '所选版本不是草图还原结果' }); return; }
+  const parentId = sketchMode || mode === 'generate' || parentRevisionId === null ? undefined
     : typeof parentRevisionId === 'string' ? parentRevisionId : listDesigns(id).filter((design) => design.valid).at(-1)?.revisionId;
   const parent = parentId ? loadDesign(id, parentId) : null;
+  if (mode === 'edit' && !parentId) { res.status(400).json({ error: '请先选择要修改的方案' }); return; }
   if (parentId && !parent) {
     res.status(404).json({ error: 'parent revision not found' });
     return;
@@ -51,9 +71,10 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
     res.status(409).json({ error: '所选方案未通过几何校验，请选择有效版本或重新生成' });
     return;
   }
-  const outline = loadOutlineContext(cwd, parent);
+  const outline = mode === 'generate' ? { source: 'none' as const } : loadOutlineContext(cwd, parent);
   const userMessage = typeof message === 'string' && message.trim() ? message
-    : '根据对话描述生成一套可落地的户型分区（外轮廓 + 房间），面积与功能名称写在 assumptions/usage 里。';
+    : sketchMode ? '忠实还原当前草图中的墙体、门窗和原始功能标注；不重新设计。'
+      : '根据对话描述生成一套可落地的户型分区（外轮廓 + 房间），面积与功能名称写在 assumptions/usage 里。';
   const previousCoverage = session.requireFullCoverage ?? session.messages
     .filter((item) => item.role === 'user')
     .reduce((required, item) => resolveFullCoverage(item.content, required), false);
@@ -79,11 +100,15 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
   };
   emit({ type: 'session', sessionId: id, provider });
   try {
-    const result = await runSpaceTurn({
-      cwd, revisionId: nextRevisionId(id), message: userMessage, outline,
-      nativeSessionId: session.nativeSessionId, model: config.model || undefined, requireDesign: true,
+    const revisionId = nextRevisionId(id);
+    const result = sketchMode && source
+      ? await runSketchTurn({ cwd, revisionId, source, message: userMessage, model: config.model || undefined,
+        previous: previousSketch ?? undefined }, getAdapter(provider), emit, abort.signal)
+      : await runSpaceTurn({
+      cwd, revisionId, message: userMessage, outline,
+      nativeSessionId: mode === 'generate' ? undefined : session.nativeSessionId, model: config.model || undefined, requireDesign: true,
     }, getAdapter(provider), emit, abort.signal);
-    if (result.nativeSessionId) session.nativeSessionId = result.nativeSessionId;
+    if (!sketchMode && result.nativeSessionId) session.nativeSessionId = result.nativeSessionId;
     emit({ type: 'done', status: result.failed ? 'failed' : 'completed' });
   } catch (error) {
     emit({ type: 'error', message: `方案处理失败: ${error instanceof Error ? error.message : String(error)}` });

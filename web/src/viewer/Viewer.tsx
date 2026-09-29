@@ -20,7 +20,8 @@ export function Viewer({
   const ref = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<ViewerScene | null>(null);
 
-  const viewMode: ModelViewMode = show3d ? '3d' : displayMode;
+  const viewMode: ModelViewMode =
+    show3d && displayMode === 'usage' ? '3d' : displayMode;
 
   const modelContent = useMemo(
     () => (content.kind === 'model' ? { ...content, view: viewMode } : content),
@@ -44,7 +45,7 @@ export function Viewer({
 
   const showDisplayBar = content.kind === 'model';
   const sunlight =
-    content.kind === 'model' && displayMode === 'sunlight' && !show3d && content.sunlight?.status === 'completed'
+    content.kind === 'model' && displayMode === 'sunlight' && content.sunlight?.status === 'completed'
       ? content.sunlight
       : undefined;
 
@@ -70,13 +71,11 @@ export function Viewer({
           </button>
         </div>
       )}
-      {showDisplayBar && (
+      {showDisplayBar && displayMode === 'usage' && (
         <button
           type="button"
           className={`viewer-3d-toggle${show3d ? ' active' : ''}`}
           aria-pressed={show3d}
-          disabled={displayMode !== 'usage'}
-          title={displayMode !== 'usage' ? '日照着色仅支持平面视图' : undefined}
           onClick={() => onShow3dChange(!show3d)}
         >
           3D
@@ -90,10 +89,10 @@ export function Viewer({
       )}
       <div className="viewer-label">
         {show3d
-            ? '3D 视图（左键平移，右键旋转，滚轮缩放）'
-            : displayMode === 'sunlight'
-              ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'
-              : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
+          ? '3D 视图（左键平移，右键旋转，滚轮缩放）'
+          : displayMode === 'sunlight'
+            ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'
+            : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
       </div>
     </div>
   );

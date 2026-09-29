@@ -13,7 +13,7 @@ Python 独立运行默认使用 LB；Node 未显式设置环境变量时，会�
 
 两种模式均使用：
 
-- Honeybee `SensorGrid.from_face3d`
+- Honeybee `SensorGrid.from_face3d`；水平采样面统一朝向 `+Z`，空间边界为顺时针或逆时针均可。历史模型中因测点朝下得到的零值需重新计算。
 - Ladybug **Ecotect** 图例参数写入 `result.legend`；`grids[].faceColors` 供 GH 对照，浏览器平面按 `hours` + 同一图例插值着色（`GMeshBasicMaterial`）
 
 Radiance 模式额外需要：
@@ -74,6 +74,12 @@ server/python/sunlight/.venv/bin/python3 -B -m unittest discover -s server/pytho
 npm test
 ```
 
-`npm test` 自动运行 Python 回归；缺少 Ladybug/Honeybee 环境时会显式标记跳过。回归覆盖无遮挡、顶板、无窗封闭空间、夜间、时区/DST/闰日、末步时长、面积加权、逻辑功能拆分、重叠/缺失目标和 Radiance Wea 时间序列，不调用 Radiance recipe。
+`npm test` 自动运行 Python 回归；缺少 Ladybug/Honeybee 环境时会显式标记跳过。回归覆盖矩形/凹形边界的双向绕序与测点朝向、无遮挡、顶板、无窗封闭空间、夜间、时区/DST/闰日、末步时长、面积加权、逻辑功能拆分、重叠/缺失目标和 Radiance Wea 时间序列。默认跳过真实 Radiance recipe。
+
+已安装 Radiance 和 lbt-recipes 时，在仓库根目录运行以下集成测试。它沿用服务端的 Python 与 Radiance 路径配置，在临时目录验证两种边界绕向下无遮挡均为 1 小时、完整顶板遮挡均为 0 小时：
+
+```sh
+SDD_TEST_RADIANCE=1 node --import tsx --test server/test/sunlightEngine.test.ts
+```
 
 本机另已实跑 Radiance：上海 2025-06-21 12:00–13:00、15 分钟步长，无遮挡测点为 1 小时、顶板遮挡为 0 小时。当前安装的 `lbt-recipes` 在结果写出后的耗时统计阶段会报 `can't subtract offset-naive and offset-aware datetimes`；上述结果文件完整且数值断言通过，但这不表示依赖库的收尾异常已修复。

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { Router } from 'express';
 import { workspacesDir } from '../config';
 import { isBlockedUploadFilename, isSketchFilename, mimeForInputFile } from '../design/inputHints';
+import { saveSketch } from '../sketch/store';
 
 export const uploadsRouter = Router();
 
@@ -15,7 +16,7 @@ function safeName(name: string): string {
   return path.basename(name).replace(/[^\w.\-]+/g, '_');
 }
 
-uploadsRouter.post('/uploads', (req, res) => {
+uploadsRouter.post('/uploads', async (req, res) => {
   const body = (req.body ?? {}) as {
     sessionId?: unknown;
     filename?: unknown;
@@ -33,6 +34,7 @@ uploadsRouter.post('/uploads', (req, res) => {
   }
 
   const id = typeof sessionId === 'string' && sessionId ? sessionId : randomUUID();
+  if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) { res.status(400).json({ error: 'invalid sessionId' }); return; }
   const name = safeName(filename);
   if (isBlockedUploadFilename(name)) {
     res.status(400).json({ error: '不支持 DXF；请用对话描述需求，或上传 PNG/JPEG/WebP 手绘草图（可选）' });
@@ -53,8 +55,12 @@ uploadsRouter.post('/uploads', (req, res) => {
     return;
   }
 
-  fs.writeFileSync(path.join(dir, name), content);
-  res.json({ sessionId: id, file: { name, size: content.length } });
+  try {
+    const sketch = await saveSketch(path.join(workspacesDir, id), filename, content);
+    res.json({ sessionId: id, file: { name: path.basename(sketch.imagePath), size: content.length }, sketch });
+  } catch (error) {
+    res.status(400).json({ error: `无法读取图片：${error instanceof Error ? error.message : String(error)}` });
+  }
 });
 
 uploadsRouter.get('/files/:sessionId/:name', (req, res) => {

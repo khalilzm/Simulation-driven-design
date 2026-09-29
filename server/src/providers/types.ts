@@ -1,4 +1,4 @@
-import type { StreamEvent } from '@sdd/shared';
+import type { AgentTurnTimings, StreamEvent } from '@sdd/shared';
 
 export interface CommandSpec {
   cmd: string;
@@ -14,6 +14,10 @@ export interface ChatTurnInput {
   model?: string;
   /** 追加到 CLI 的系统提示词（如空间设计约定） */
   systemPrompt?: string;
+  /** Native image attachments, relative to cwd. Never rely solely on a path in text. */
+  images?: { path: string; mimeType: 'image/png'; width: number; height: number }[];
+  /** Initial extraction already has the image and full schema; only write its deliverable. */
+  imagePhase?: 'extract' | 'patch';
 }
 
 export interface ParsedLine {
@@ -25,6 +29,7 @@ export interface ParsedLine {
 export interface TurnResult {
   nativeSessionId?: string;
   failed: boolean;
+  timings?: AgentTurnTimings;
 }
 
 export interface ProviderAdapter {

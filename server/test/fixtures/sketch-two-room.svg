@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="800" viewBox="0 0 1000 800">
+  <rect width="1000" height="800" fill="white"/>
+  <g fill="none" stroke="#222" stroke-width="20" stroke-linecap="butt">
+    <path d="M100 100 H200 M320 100 H900 V700 H100 V100"/>
+    <path d="M500 100 V355 M500 445 V700"/>
+  </g>
+  <g fill="none" stroke="#222" stroke-width="3">
+    <path d="M200 93 H320 M200 100 H320 M200 107 H320 M200 90 V110 M320 90 V110"/>
+    <path d="M500 355 H590 M590 355 A90 90 0 0 1 500 445"/>
+    <path d="M100 48 H900 M100 38 V80 M900 38 V80"/>
+  </g>
+  <g fill="#222" font-family="sans-serif" font-size="30" text-anchor="middle">
+    <text x="500" y="40">8m</text>
+    <text x="300" y="400">客厅</text>
+    <text x="700" y="400">主卧</text>
+  </g>
+  <text x="100" y="760" fill="#555" font-size="18" font-family="sans-serif">层高 3m；墙厚 0.2m；门高 2.1m；窗高 1.2m、窗台高 0.9m</text>
+</svg>

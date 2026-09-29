@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { SpaceModel, SunlightConfig } from '@sdd/shared';
+import { SKETCH_HUMAN_REVIEW_ENABLED } from '@sdd/shared';
 import { parseSunlightConfig } from '@sdd/shared';
 import { workspacesDir } from '../config';
 import { validateStoredDesign } from './designValidity';
@@ -40,16 +41,33 @@ export interface DesignSummary {
   parentRevisionId: string | null;
   createdAt: string;
   valid: boolean;
+  sketchId?: string;
+  sketchStatus?: SpaceModel['model']['sketchStatus'];
 }
 
 export function isAcceptedDesign(sessionId: string, revisionId: string, model?: SpaceModel): boolean {
+  const loaded = model ?? loadDesign(sessionId, revisionId);
   const file = path.join(designsDir(sessionId), revisionId, 'validation.json');
   if (fs.existsSync(file)) {
     try {
-      if (JSON.parse(fs.readFileSync(file, 'utf8')).valid !== true) return false;
+      const v = JSON.parse(fs.readFileSync(file, 'utf8')) as {
+        valid?: boolean;
+        geometryValid?: boolean;
+        status?: string;
+      };
+      if (v.valid === true) return validateStoredDesign(loaded).valid;
+      if (
+        !SKETCH_HUMAN_REVIEW_ENABLED &&
+        loaded?.model.sketchId &&
+        v.geometryValid === true &&
+        v.status !== 'rejected'
+      ) {
+        return validateStoredDesign(loaded).valid;
+      }
+      return false;
     } catch { return false; }
   }
-  return validateStoredDesign(model ?? loadDesign(sessionId, revisionId)).valid;
+  return validateStoredDesign(loaded).valid;
 }
 
 export function listDesigns(sessionId: string): DesignSummary[] {
@@ -71,6 +89,8 @@ export function listDesigns(sessionId: string): DesignSummary[] {
       parentRevisionId: model.model?.parentRevisionId ?? null,
       createdAt,
       valid: isAcceptedDesign(sessionId, entry, model),
+      sketchId: model.model?.sketchId,
+      sketchStatus: model.model?.sketchStatus,
     });
   }
   return out.sort((a, b) => a.revisionId.localeCompare(b.revisionId));

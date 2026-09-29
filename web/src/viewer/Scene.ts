@@ -31,6 +31,27 @@ const LABEL_HEIGHT_MIN = 0.28;
 const LABEL_HEIGHT_MAX = 0.8;
 const LABEL_HEIGHT_RATIO = 0.45;
 
+const VIEWER_SSAO_DEFAULT = { enabled: true, radius: 2.0 };
+
+/** 2D 日照伪彩不应受 CSM/SSAO/地面影影响读数 */
+function applySunlight2dPresentation(viewer: CCViewerApp, sunlight2d: boolean): void {
+  if (sunlight2d) {
+    viewer.setEffect({ enabled: false });
+    const keylight = viewer.viewport.keylight;
+    keylight.castShadow = false;
+    keylight.enableShadow(false);
+    keylight.shadowIntensity = 0;
+    viewer.viewport.groundPlane.visible = false;
+    return;
+  }
+  viewer.setEffect(VIEWER_SSAO_DEFAULT);
+  const keylight = viewer.viewport.keylight;
+  keylight.castShadow = true;
+  keylight.enableShadow(true);
+  keylight.shadowIntensity = 1;
+  viewer.viewport.groundPlane.visible = true;
+}
+
 function labelTargetHeight(boundary: [number, number][]): number {
   const extent = polygonBBoxMinExtent(boundary);
   if (extent <= 0) return LABEL_HEIGHT_MAX;
@@ -109,9 +130,10 @@ export function createScene(container: HTMLDivElement): ViewerScene {
   const setContent = (content: ViewerContent) => {
     viewer.clear();
     overlays.clear(viewer);
+    const is3d = content.kind === 'model' && content.view === '3d';
     const navigationMode =
       content.kind === 'model'
-        ? content.view === '3d'
+        ? is3d
           ? ViewType.ThreeD
           : ViewType.TwoD
         : content.kind === 'dxf'
@@ -126,7 +148,6 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       }
     } else if (content.kind === 'model') {
       const useSunlight = content.view === 'sunlight' && content.sunlight?.status === 'completed';
-      const is3d = content.view === '3d';
       const sun = content.sunlight;
       const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun) : [];
       const meshEdges3d = { meshEdges: true as const };
@@ -181,6 +202,8 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       viewer.navigation.setControlRotate(navigationMode === ViewType.ThreeD);
     }
     viewer.setEdgeDetection({ enabled: false });
+    const sunlight2d = content.kind === 'model' && content.view === 'sunlight';
+    applySunlight2dPresentation(viewer, sunlight2d);
   };
 
   return {

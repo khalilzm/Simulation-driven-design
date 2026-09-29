@@ -16,7 +16,10 @@ def _ring_to_face3d(ring: List[List[float]], z: float) -> Face3D:
     pts = [Point3D(float(p[0]), float(p[1]), z) for p in ring[:-1] if len(p) >= 2]
     if len(pts) < 3:
         raise ValueError("多边形顶点不足")
-    return Face3D(pts)
+    face = Face3D(pts)
+    # 水平采样面始终朝上；旧模型和图片 Y 轴翻转后的边界可能为顺时针。
+    # Radiance 沿面法向生成测点，朝下会让白天直射日照全部变成零。
+    return face.flip() if face.normal.z < 0 else face
 
 
 def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> List[Shade]:

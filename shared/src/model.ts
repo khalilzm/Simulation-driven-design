@@ -15,6 +15,9 @@ export interface ModelMeta {
   parentRevisionId: string | null;
   units: Unit;
   origin: Vec2;
+  sketchId?: string;
+  /** Prevent uncalibrated/unreviewed reconstructions from entering analysis. */
+  sketchStatus?: 'accepted' | 'needs_review' | 'rejected';
 }
 
 export interface Floor {
@@ -86,6 +89,9 @@ export interface Door {
   swing: 'left' | 'right' | 'none';
   /** 门扇数量：1 = 单开门，2 = 双开门（默认 1） */
   leafCount?: 1 | 2;
+  hinge?: 'start' | 'end';
+  /** Side of the directed host wall in model coordinates. */
+  opensTo?: 'left' | 'right';
   analysisProperties: Record<string, unknown>;
 }
 

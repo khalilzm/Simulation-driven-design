@@ -424,8 +424,9 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
       continue;
     }
     const door = model.doors.find((d) => d.openingId === o.id);
-    const vx = -uy;
-    const vy = ux;
+    const openingSide = door?.opensTo === 'right' ? -1 : 1;
+    const vx = -uy * openingSide;
+    const vy = ux * openingSide;
     const r = door?.leafCount === 2 ? o.width / 2 : o.width;
     const ax = mx - ux * o.width / 2;
     const ay = my - uy * o.width / 2;
@@ -448,10 +449,13 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
       pushArc(openings, ax, ay, ux, uy, vx, vy, r);
       pushArc(openings, ex, ey, -ux, -uy, vx, vy, r);
     } else {
-      const bx = ax + vx * r;
-      const by = ay + vy * r;
-      pushSeg(openings, [ax, ay], [bx, by]);
-      pushArc(openings, ax, ay, ux, uy, vx, vy, r);
+      const atEnd = door.hinge === 'end';
+      const hx = atEnd ? mx + ux * o.width / 2 : ax;
+      const hy = atEnd ? my + uy * o.width / 2 : ay;
+      const bx = hx + vx * r;
+      const by = hy + vy * r;
+      pushSeg(openings, [hx, hy], [bx, by]);
+      pushArc(openings, hx, hy, atEnd ? -ux : ux, atEnd ? -uy : uy, vx, vy, r);
     }
   }
 

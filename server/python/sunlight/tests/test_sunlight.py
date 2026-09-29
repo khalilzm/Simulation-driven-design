@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -95,6 +97,58 @@ class CivilTimeTests(unittest.TestCase):
         values = list(sun_intervals(config(analysisDate="2024-02-29")))
         self.assertEqual(len(values), 4)
         self.assertGreater(values[0][0][2], 0.9)
+
+
+class SensorDirectionTests(unittest.TestCase):
+    def test_horizontal_grids_point_up_for_both_boundary_windings(self):
+        rings = [rect(1, 2, 5, 6),
+                 [[1, 2], [5, 2], [5, 4], [3, 4], [3, 6], [1, 6], [1, 2]]]
+        for ring in rings:
+            positions = []
+            for reverse in (False, True):
+                with self.subTest(ring=ring, reverse=reverse):
+                    scene = model()
+                    scene['floor']['elevation'] = 4
+                    scene['spaces'][0]['boundary'] = list(reversed(ring)) if reverse else ring
+                    before = copy.deepcopy(scene)
+                    _, grids = build_honeybee_model(scene, config())
+                    self.assertEqual(scene, before)
+                    self.assertEqual(len(grids), 1)
+                    self.assertGreater(len(grids[0].sensors), 0)
+                    positions.append(sorted(tuple(round(v, 8) for v in s.pos) for s in grids[0].sensors))
+                    for sensor in grids[0].sensors:
+                        self.assertEqual(sensor.dir, (0, 0, 1))
+                        self.assertAlmostEqual(sensor.pos[2], 4.75)
+                    self.assertTrue(all(normal.z > 0 for normal in grids[0].mesh.face_normals))
+            self.assertEqual(positions[0], positions[1])
+
+
+@unittest.skipUnless(os.environ.get('SDD_TEST_RADIANCE') == '1',
+                     'Set SDD_TEST_RADIANCE=1 to run the real Radiance recipe')
+class RadianceWindingTests(unittest.TestCase):
+    def test_reversed_boundaries_preserve_sun_hours_and_roof_shading(self):
+        from radiance_engine import run_radiance_recipe
+
+        cfg = config(location={'latitude': 31.2304, 'longitude': 121.4737,
+                               'timezone': 'Asia/Shanghai'}, analysisDate='2025-06-21')
+        with tempfile.TemporaryDirectory(prefix='sdd-radiance-winding-') as folder:
+            for roof in (False, True):
+                metrics = []
+                for reverse in (False, True):
+                    with self.subTest(roof=roof, reverse=reverse):
+                        scene = model(roof=roof)
+                        if reverse:
+                            scene['floor']['boundary'].reverse()
+                            scene['spaces'][0]['boundary'].reverse()
+                        result = run_radiance_recipe(scene, cfg, Path(folder) / f'{roof}-{reverse}')
+                        self.assertEqual(result['status'], 'completed', result.get('error'))
+                        self.assertEqual(result['metrics']['sensorCount'], 4)
+                        for grid in result['grids']:
+                            self.assertEqual(len(grid['hours']), len(grid['faces']))
+                            for hours in grid['hours']:
+                                self.assertAlmostEqual(hours, 0 if roof else 1)
+                        metrics.append(result['spaces'])
+                self.assertEqual(metrics[0], metrics[1])
 
 
 class RayPhysicsTests(unittest.TestCase):

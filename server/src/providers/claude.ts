@@ -2,6 +2,7 @@ import { config } from '../config';
 import { asRecord, evError, evProgress, evText, extractText, extractThinking, parseJsonLine, str } from './normalize';
 import { runCliProcess } from './spawn';
 import type { ChatTurnInput, CommandSpec, ParsedLine, ProviderAdapter } from './types';
+import { claudeInput } from './images';
 
 export function buildCommand(input: ChatTurnInput): CommandSpec {
   const args = [
@@ -11,13 +12,14 @@ export function buildCommand(input: ChatTurnInput): CommandSpec {
     '--verbose',
     '--bare',
     '--tools',
-    'Write',
+    input.imagePhase === 'extract' ? 'Write' : 'Read,Write',
     '--disable-slash-commands',
     '--effort',
     'low',
     '--permission-mode',
     'acceptEdits',
   ];
+  if (input.images?.length) args.push('--input-format', 'stream-json');
   if (input.systemPrompt) args.push('--append-system-prompt', input.systemPrompt);
   if (input.nativeSessionId) args.push('--resume', input.nativeSessionId);
   if (input.model) args.push('--model', input.model);
@@ -61,6 +63,6 @@ export function parseLine(line: string): ParsedLine {
 export const claudeAdapter: ProviderAdapter = {
   id: 'claude',
   run(input, emit, signal) {
-    return runCliProcess(buildCommand(input), input, parseLine, emit, signal);
+    return runCliProcess(buildCommand(input), { ...input, message: claudeInput(input) }, parseLine, emit, signal);
   },
 };

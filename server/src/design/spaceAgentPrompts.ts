@@ -1,6 +1,5 @@
 import type { OutlineContext } from '../spacePrompt';
 import { closePolygon, outlineBBox } from '../model/geometry';
-import { PROGRAM_OUTLINE_REL } from './programOutline';
 
 /** intent.json 的 JSON 示例（有/无固定轮廓两种首轮共用）。 */
 const INTENT_EXAMPLE = `{
@@ -65,18 +64,4 @@ ${INTENT_STRICT_RULES}
 - 房间面积按功能写合理值即可（程序会按比例放大填满外轮廓，不需要你精确铺满，但不要写明显离谱的超大面积）
 
 路径：designs/${revisionId}/intent.json（相对 cwd）。写完用一句话说明房间与面积假设。校验失败会再给一次修正机会。`;
-}
-
-/** 草图首轮：Read 草图，忠实还原成 outline.json + layout.json（v2 坐标），不做重新切分。 */
-export function buildSketchLayoutPrompt(revisionId: string, ctx: OutlineContext): string {
-  const sketch = ctx.inputHints ?? 'inputs/ 下的草图';
-  return `你是户型设计助手。先用 Read 查看草图（${sketch}），如实还原其中的房间、墙体、门、窗（不要自己重新划分），然后在本会话 cwd 下写两个文件（相对路径）。schema 已完整给出，不要再读仓库源码/测试/示例：
-
-1) ${PROGRAM_OUTLINE_REL}
-{ "boundary": [[0,0],[W,0],[W,H],[0,H],[0,0]], "origin": [0,0], "units": "m", "assumptions": [] }
-
-2) designs/${revisionId}/layout.json
-{ "schemaVersion": 2, "spaces": [{"id":"living","usage":"客厅","enclosed":false,"boundary":[[0,0],[5,0],[5,8],[0,8],[0,0]]}], "boundaries": [{"id":"split","segment":[[5,0],[5,8]],"kind":"wall","leftSpaceId":"living","rightSpaceId":"bed"}], "openings": [{"id":"door-1","hostBoundaryId":"split","position":4,"width":1,"height":2.1}], "doors": [{"id":"d1","openingId":"door-1","swing":"left"}], "windows": [], "assumptions": [], "unmetRequirements": [] }
-
-单位一律米。spaces.boundary 是每个房间的闭合多边形，拼起来覆盖整个外轮廓；boundaries.segment 是相邻房间共墙的两端点，靠外一侧写 "outside"；openings.hostBoundaryId 指向 boundaries.id，doors.openingId 指向 openings.id；至少一个 enclosed:false 的开放区。写完用一句话说明还原结果即可，无需验证或编译。`;
 }

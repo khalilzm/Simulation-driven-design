@@ -11,11 +11,8 @@ import { checkOutlinePreserved } from '../model/store';
 import { normalizeAgentGeometry } from '../model/normalizeAgent';
 import { createLayoutContext } from './layoutContext';
 import { compileLayout } from './compileLayout';
-import { loadOutlineContext } from './outlineContext';
-import { buildIntentPrompt, buildIntentOnlyPrompt, buildSketchLayoutPrompt } from './spaceAgentPrompts';
-import { PROGRAM_OUTLINE_REL } from './programOutline';
-import { ensureAgentIntentFile, ensureAgentLayoutFile, ensureAgentOutlineFile, intentRelativePath, layoutRelativePath } from './resolveAgentLayout';
-import { findSketchImagePath } from '../sketch/runSketchParse';
+import { buildIntentPrompt, buildIntentOnlyPrompt } from './spaceAgentPrompts';
+import { ensureAgentIntentFile, ensureAgentLayoutFile, intentRelativePath, layoutRelativePath } from './resolveAgentLayout';
 import { parseDesignIntent } from './intent';
 import { compileIntent, deriveOutline } from './layoutIntent';
 
@@ -32,32 +29,6 @@ function ensureDesignFolderPending(folder: string): void {
   if (!fs.existsSync(validationPath)) {
     fs.writeFileSync(validationPath, JSON.stringify({ valid: false, status: 'pending' }));
   }
-}
-
-function syncOutlineFromWorkspace(
-  cwd: string,
-  outline: OutlineContext,
-  revisionId: string,
-  turnText: string,
-  emit: (event: StreamEvent) => void,
-): void {
-  if (outline.currentModel) return;
-  let dsmlOutline: string | undefined;
-  const extracted = extractDsmlWrite(turnText);
-  if (extracted && path.basename(extracted.filePath) === 'outline.json') dsmlOutline = extracted.content;
-  const ensuredOutline = ensureAgentOutlineFile(cwd, dsmlOutline);
-  if (ensuredOutline.ok && ensuredOutline.recoveredFrom) {
-    emit({ type: 'progress', message: `已从误写路径恢复轮廓：${ensuredOutline.recoveredFrom} → ${PROGRAM_OUTLINE_REL}` });
-  }
-  const reloaded = loadOutlineContext(cwd, null, true);
-  if (reloaded.inputHints && !outline.inputHints) outline.inputHints = reloaded.inputHints;
-  if (!reloaded.outline) return;
-  outline.source = reloaded.source;
-  outline.outline = reloaded.outline;
-  outline.layout = createLayoutContext(reloaded.outline, outline.currentModel, true);
-  outline.workspaceDir = cwd;
-  ensureDesignFolderPending(path.join(cwd, 'designs', revisionId));
-  emit({ type: 'progress', message: '已加载外轮廓，等待 layout.json' });
 }
 
 function buildIntentCorrectionMessage(revisionId: string, errors: string[], currentOutput?: string): string {
@@ -82,7 +53,7 @@ function failNoDeliverable(
   return { nativeSessionId, failed: requireDesign !== false };
 }
 
-/** 自然语言 → outline.json → layout.json → model.json；必须 emit design 事件才更新 Viewer。 */
+/** 文字意图或已有布局 → model.json；草图走独立 runSketchTurn。 */
 export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapter,
   emit: (event: StreamEvent) => void, signal?: AbortSignal): Promise<TurnResult> {
   const { cwd, revisionId } = input;
@@ -93,8 +64,7 @@ export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapt
   const outline = { ...input.outline };
   const requireDesign = input.requireDesign !== false;
   const isParentTurn = !!outline.currentModel;
-  const isSketchTurn = !outline.outline && !outline.currentModel && !!findSketchImagePath(cwd);
-  const useLayout = isParentTurn || isSketchTurn;
+  const useLayout = isParentTurn;
   const started = Date.now();
   if (outline.outline) {
     outline.layout = createLayoutContext(outline.outline, outline.currentModel);
@@ -128,7 +98,7 @@ export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapt
       const { model, warnings, assumptions } = compileLayout(
         JSON.parse(output), outline.layout!, revisionId, outline.requireFullCoverage,
       );
-      if (!isSketchTurn) {
+      {
         errors.push(...validateAgentModel(model).errors, ...validateModel(model).errors);
         if (outline.currentModel) {
           const error = checkOutlinePreserved(normalizeAgentGeometry(outline.currentModel), model);
@@ -207,24 +177,16 @@ export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapt
     let mergedTurnText = '';
     if (!outline.outline && !outline.currentModel) {
       if (signal?.aborted) return { nativeSessionId, failed: true };
-      const prompt = isSketchTurn
-        ? buildSketchLayoutPrompt(revisionId, outline)
-        : buildIntentOnlyPrompt(revisionId, outline);
+      const prompt = buildIntentOnlyPrompt(revisionId, outline);
       const { result, turnText, hadError } = await runAgent(prompt, message);
       const wroteGeometryOutline = quarantineAgentModel();
       if (result.failed || hadError || signal?.aborted) return { nativeSessionId, failed: true };
       if (wroteGeometryOutline) {
-        return failNoDeliverable(revisionId, [isSketchTurn ? '请只写 outline.json 与 layout.json，不要写 model.json' : '请只写 intent.json，不要写 model.json'], requireDesign, emit, nativeSessionId);
-      }
-      if (isSketchTurn) {
-        syncOutlineFromWorkspace(cwd, outline, revisionId, turnText, emit);
-        if (!outline.layout) {
-          return failNoDeliverable(revisionId, [`未生成有效 ${PROGRAM_OUTLINE_REL}`], requireDesign, emit, nativeSessionId);
-        }
+        return failNoDeliverable(revisionId, ['请只写 intent.json，不要写 model.json'], requireDesign, emit, nativeSessionId);
       }
       mergedDone = true;
       mergedTurnText = turnText;
-      emit({ type: 'progress', message: isSketchTurn ? '已还原草图几何，正在编译…' : '已生成设计意图，正在反推外轮廓并编译…' });
+      emit({ type: 'progress', message: '已生成设计意图，正在反推外轮廓并编译…' });
     }
 
     for (let attempt = 0; attempt < LAYOUT_ATTEMPTS; attempt++) {

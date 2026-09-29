@@ -48,6 +48,12 @@ export interface SketchPreviewEvent {
   path: string;
 }
 
+export interface SketchReviewEvent {
+  type: 'sketchReview';
+  revisionId: string;
+  status: 'accepted' | 'needs_review' | 'rejected';
+}
+
 export type StreamEvent =
   | SessionEvent
   | ProgressEvent
@@ -56,4 +62,5 @@ export type StreamEvent =
   | DoneEvent
   | DesignEvent
   | ThinkingEvent
-  | SketchPreviewEvent;
+  | SketchPreviewEvent
+  | SketchReviewEvent;

@@ -7,6 +7,7 @@ import { uploadsRouter } from './routes/uploads';
 import { designsRouter } from './routes/designs';
 import { sunlightRouter } from './routes/sunlight';
 import { examplesRouter } from './routes/examples';
+import { sketchesRouter } from './routes/sketches';
 import { serveWeb } from './static';
 
 const app = express();
@@ -19,6 +20,7 @@ app.use('/api', uploadsRouter);
 app.use('/api', designsRouter);
 app.use('/api', sunlightRouter);
 app.use('/api', examplesRouter);
+app.use('/api', sketchesRouter);
 
 serveWeb(app);
 

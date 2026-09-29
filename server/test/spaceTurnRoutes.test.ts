@@ -14,6 +14,9 @@ import { loadSession } from '../src/sessions/store';
 import { listDesigns } from '../src/model/store';
 import { layoutModel } from './helpers/spaceModel';
 import { v2Layout } from './helpers/v2Layout';
+import sharp from 'sharp';
+import { saveSketch, writeJson } from '../src/sketch/store';
+import { sketchFixture } from './helpers/sketch';
 
 async function request(body: unknown, generate: boolean) {
   const req = Object.assign(new EventEmitter(), { body }) as Request;
@@ -39,6 +42,31 @@ function workspace(t: TestContext) {
   t.after(() => fs.rmSync(cwd, { recursive: true, force: true }));
   return { sessionId, cwd };
 }
+
+test('重新上传草图显式绑定新图，无视旧 outline 与旧原生会话', async (t) => {
+  const { sessionId, cwd } = workspace(t);
+  const bytes = await sharp({ create: { width: 1000, height: 800, channels: 3, background: 'white' } }).png().toBuffer();
+  const first = await saveSketch(cwd, 'a.png', bytes);
+  const second = await saveSketch(cwd, 'a.png', bytes);
+  writeJson(path.join(cwd, 'inputs/outline.json'), { boundary: [[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]], origin: [0, 0], units: 'm' });
+  const extraction = sketchFixture(); extraction.sketchId = second.id;
+  let calls = 0;
+  t.mock.method(echoAdapter, 'run', async (input: ChatTurnInput) => {
+    calls++;
+    assert.equal(input.images?.[0].path, second.imagePath);
+    assert.doesNotMatch(input.systemPrompt!, new RegExp(first.id));
+    const folder = path.join(cwd, 'designs/rev-0001');
+    assert.equal(input.nativeSessionId, undefined);
+    writeJson(path.join(folder, 'sketch.json'), extraction);
+    return { failed: false, nativeSessionId: 'fresh-sketch' };
+  });
+  const response = await request({ sessionId, provider: 'echo', mode: 'sketch', sketchId: second.id, parentRevisionId: null }, true);
+  assert.equal(response.statusCode, 200);
+  assert.equal(calls, 1);
+  assert.ok(response.events.some((e) => e.type === 'design' && e.valid));
+  assert.equal(loadSession(sessionId)?.nativeSessionId, undefined, '草图会话不污染文字设计原生会话');
+  assert.equal((await request({ sessionId, provider: 'echo', mode: 'sketch', sketchId: 'missing' }, true)).statusCode, 400);
+});
 
 test('两个入口共用服务端轮廓及修正流程，生成按钮保存可续跑会话', async (t) => {
   const inputs: ChatTurnInput[] = [];

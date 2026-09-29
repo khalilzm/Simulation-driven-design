@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ProviderId, SunlightConfig } from '@sdd/shared';
+import type { ProviderId, SunlightConfig, SketchReport, SpaceTaskMode } from '@sdd/shared';
+import { SKETCH_HUMAN_REVIEW_ENABLED } from '@sdd/shared';
 import {
   checkSunlight,
   fetchStatus,
@@ -14,6 +15,8 @@ import {
   saveSunlightConfig,
   streamChat,
   uploadSketch,
+  loadSketchReport,
+  confirmSketchReport,
 } from './api';
 import { chatImageFromInputPath } from './chatImages';
 import type { SunlightRunResponse } from './api';
@@ -27,6 +30,7 @@ import { Viewer } from './viewer/Viewer';
 import { sampleModel } from './examples/sampleModel';
 import type { ChatMessage, ModelDisplayMode, ViewerContent } from './types';
 import { SunlightPanel } from './components/SunlightPanel';
+import { SketchReviewPanel } from './components/SketchReviewPanel';
 
 export default function App() {
   const [providers, setProviders] = useState<ProviderOption[]>([]);
@@ -38,6 +42,10 @@ export default function App() {
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [currentRevisionId, setCurrentRevisionId] = useState<string>();
   const [notice, setNotice] = useState<string>();
+  const [taskMode, setTaskMode] = useState<SpaceTaskMode>('generate');
+  const [selectedSketchId, setSelectedSketchId] = useState<string>();
+  const [sketchReport, setSketchReport] = useState<SketchReport>();
+  const [sketchReviewOpen, setSketchReviewOpen] = useState(false);
   const [viewerDisplay, setViewerDisplay] = useState<ModelDisplayMode>('usage');
   const [viewer3d, setViewer3d] = useState(false);
 
@@ -48,7 +56,7 @@ export default function App() {
 
   const handleViewerDisplayChange = (mode: ModelDisplayMode) => {
     setViewerDisplay(mode);
-    if (mode === 'sunlight') setViewer3d(false);
+    setViewer3d(false);
   };
   const [sunlightRun, setSunlightRun] = useState<SunlightRunResponse | null>(null);
   const [sunlightConfig, setSunlightConfig] = useState<SunlightConfig | null | undefined>(undefined);
@@ -96,6 +104,10 @@ export default function App() {
     setSunlightRun(null);
     setSunlightConfig(undefined);
     resetViewerToPlan();
+    setSelectedSketchId(undefined);
+    setSketchReport(undefined);
+    setSketchReviewOpen(false);
+    setTaskMode('generate');
   };
 
   const ensureSessionId = (): string => {
@@ -105,12 +117,18 @@ export default function App() {
   };
 
   const handleUploadFile = async (name: string, base64: string) => {
+    setBusy(true);
     setNotice('上传中…');
     try {
       const sid = ensureSessionId();
       const res = await uploadSketch(sid, name, base64);
       setSessionId(res.sessionId);
       setCurrentRevisionId(undefined);
+      setSelectedSketchId(res.sketch.id);
+      setTaskMode('sketch');
+      setSketchReport(undefined);
+      setSketchReviewOpen(false);
+      setSunlightRun(null);
       const image = chatImageFromInputPath(res.sessionId, res.file.name);
       setMessages((previous) => [
         ...previous,
@@ -123,10 +141,40 @@ export default function App() {
       ]);
       chatScrollRef.current += 1;
       setChatScrollTick(chatScrollRef.current);
-      setNotice(`已上传草图 ${res.file.name}；在对话中说明需求或点击「生成方案」`);
+      setNotice(`已上传草图 ${name}；可说明图中尺寸或点击「还原草图」`);
     } catch (err) {
       setNotice(`上传失败: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBusy(false);
     }
+  };
+
+  const showSketchReport = async (sid: string, revisionId: string) => {
+    const report = await loadSketchReport(sid, revisionId);
+    setSketchReport(report);
+    setSketchReviewOpen(false);
+    setSelectedSketchId(report.source.id);
+    setTaskMode('sketch');
+    setCurrentRevisionId(revisionId);
+    setSunlightRun(null);
+    resetViewerToPlan();
+    if (report.geometryValid && report.model) setViewerContent({ kind: 'model', model: report.model });
+    else setViewerContent({ kind: 'empty' });
+    setDesigns(await listDesigns(sid));
+  };
+
+  const handleConfirmSketch = async (calibration?: { wallId: string; lengthM: number }) => {
+    if (!sessionId || !sketchReport) return;
+    setBusy(true);
+    try {
+      const report = await confirmSketchReport(sessionId, sketchReport.revisionId, {
+        extractionHash: sketchReport.extractionHash, confirm: true, ...calibration,
+      });
+      await showSketchReport(sessionId, report.revisionId);
+      setNotice(`已确认草图还原 ${report.revisionId}`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : String(error));
+    } finally { setBusy(false); }
   };
 
   const handleLoadSample = async () => {
@@ -135,6 +183,9 @@ export default function App() {
     try {
       const res = await saveDesign(sid, sampleModel);
       setCurrentRevisionId(res.revisionId);
+      setTaskMode('edit');
+      setSketchReport(undefined);
+      setSketchReviewOpen(false);
       setSunlightRun(null);
       setViewerContent({ kind: 'model', model: sampleModel });
       setDesigns(await listDesigns(sid));
@@ -152,6 +203,9 @@ export default function App() {
       const { model, sunlight } = await fetchSunlightDemoPass();
       const res = await saveDesign(sid, model);
       if (!res.revisionId) throw new Error('保存方案未返回 revisionId');
+      setTaskMode('edit');
+      setSketchReport(undefined);
+      setSketchReviewOpen(false);
       await saveSunlightConfig(sid, res.revisionId, sunlight);
       setSunlightConfig(sunlight as SunlightConfig);
       setCurrentRevisionId(res.revisionId);
@@ -177,8 +231,10 @@ export default function App() {
     let generationFailed = false;
     let explanation = '';
     let designWarnings: string[] = [];
+    let sketchRevision: string | undefined;
     try {
       await generate(sid, provider, (e) => {
+        if (e.type === 'sketchReview') sketchRevision = e.revisionId;
         if (e.type === 'progress') setNotice(e.message);
         if (e.type === 'sketchPreview') {
           const image = chatImageFromInputPath(sid, e.path);
@@ -198,12 +254,29 @@ export default function App() {
           designWarnings = e.warnings ?? [];
           if (!e.valid) setNotice(`方案校验失败: ${e.errors.join('；')}`);
         }
-      }, currentRevisionId ?? null);
+      }, taskMode === 'generate' ? null : currentRevisionId ?? null, { mode: taskMode, sketchId: selectedSketchId });
+      if (sketchRevision) {
+        if (explanation) setMessages((previous) => [...previous, {
+          id: crypto.randomUUID(), role: 'assistant', content: explanation, status: generationFailed ? 'failed' : 'done',
+        }]);
+        await showSketchReport(sid, sketchRevision);
+        setNotice(
+          generationFailed
+            ? SKETCH_HUMAN_REVIEW_ENABLED
+              ? '草图存在需修正的问题，请打开「识别结果」查看'
+              : '草图存在需修正的问题，请根据提示重新还原或修正'
+            : '草图还原完成，可直接查看平面或运行日照分析',
+        );
+        return;
+      }
       if (explanation) setMessages((previous) => [...previous, {
         id: crypto.randomUUID(), role: 'assistant', content: explanation, status: generationFailed ? 'failed' : 'done',
       }]);
       if (generationError) throw new Error(generationError);
       if (newRev) {
+        setTaskMode('edit');
+        setSketchReport(undefined);
+        setSketchReviewOpen(false);
         const model = await loadDesign(sid, newRev);
         setCurrentRevisionId(newRev);
         setSunlightRun(null);
@@ -225,6 +298,13 @@ export default function App() {
     const sid = sessionId;
     if (!sid) return;
     try {
+      if (designs.find((d) => d.revisionId === revisionId)?.sketchId) {
+        await showSketchReport(sid, revisionId);
+        return;
+      }
+      setSketchReport(undefined);
+      setSketchReviewOpen(false);
+      setTaskMode('edit');
       const model = await loadDesign(sid, revisionId);
       setCurrentRevisionId(revisionId);
       setSunlightRun(null);
@@ -313,7 +393,7 @@ export default function App() {
     }
   };
 
-  const handleSend = async (message: string) => {
+  const handleSend = async (message: string, mode = taskMode) => {
     if (busy) return;
     const assistantId = crypto.randomUUID();
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: message };
@@ -328,7 +408,8 @@ export default function App() {
 
     let sid = sessionId;
     try {
-      await streamChat({ provider, sessionId, message, parentRevisionId: currentRevisionId ?? null }, (e) => {
+      await streamChat({ provider, sessionId, message, parentRevisionId: mode === 'generate' ? null : currentRevisionId ?? null,
+        mode, sketchId: selectedSketchId }, (e) => {
         switch (e.type) {
           case 'session':
             sid = e.sessionId;
@@ -351,8 +432,21 @@ export default function App() {
             setChatScrollTick(chatScrollRef.current);
             break;
           }
+          case 'sketchReview': {
+            if (sid) void showSketchReport(sid, e.revisionId).catch((error) => setNotice(String(error)));
+            patch(assistantId, (x) => ({
+              ...x,
+              content: `${x.content}\n\n草图还原 ${e.revisionId}：${
+                e.status === 'accepted' || !SKETCH_HUMAN_REVIEW_ENABLED
+                  ? '平面已就绪，可运行日照分析。'
+                  : '可在「识别结果」中补充尺寸或修正标记。'
+              }`,
+            }));
+            break;
+          }
           case 'design': {
             if (!sid) break;
+            if (mode === 'sketch') break;
             const sidNow = sid;
             if (!e.valid) {
               const errText = e.errors.join('；');
@@ -365,6 +459,7 @@ export default function App() {
             setSunlightRun(null);
             resetViewerToPlan();
             setCurrentRevisionId(e.revisionId);
+            setTaskMode('edit');
             patch(assistantId, (x) => {
               const suffix = `\n\n— 已生成户型 ${e.revisionId}，右侧「平面方案」可查看；需日照时请展开下方「日照分析」。`;
               const base = x.content.trimEnd();
@@ -424,6 +519,21 @@ export default function App() {
           <ProviderSelect value={provider} options={providers} onChange={handleProviderChange} />
           <div className="toolbar">
             <Upload onFile={handleUploadFile} disabled={busy} />
+            <select aria-label="方案处理方式" value={taskMode} disabled={busy} onChange={(e) => setTaskMode(e.target.value as SpaceTaskMode)}>
+              <option value="generate">文字生成</option>
+              <option value="sketch" disabled={!selectedSketchId}>草图还原</option>
+              <option
+                value="edit"
+                disabled={
+                  !currentRevisionId ||
+                  (SKETCH_HUMAN_REVIEW_ENABLED &&
+                    sketchReport?.status !== undefined &&
+                    sketchReport.status !== 'accepted')
+                }
+              >
+                方案修改
+              </option>
+            </select>
             <button onClick={handleLoadSample} disabled={busy}>
               加载示例方案
             </button>
@@ -431,8 +541,11 @@ export default function App() {
               日照达标示例
             </button>
             <button onClick={handleGenerate} disabled={busy}>
-              生成方案
+              {taskMode === 'sketch' ? '还原草图' : '生成方案'}
             </button>
+            {SKETCH_HUMAN_REVIEW_ENABLED && sketchReport && (
+              <button onClick={() => setSketchReviewOpen(true)}>识别结果</button>
+            )}
           </div>
           {notice && <div className="notice">{notice}</div>}
         </div>
@@ -444,8 +557,10 @@ export default function App() {
                 type="button"
                 className={`chip ${d.revisionId === currentRevisionId ? 'active' : ''}`}
                 onClick={() => handleSelectDesign(d.revisionId)}
+                disabled={busy}
               >
                 {d.revisionId}
+                {SKETCH_HUMAN_REVIEW_ENABLED && d.sketchStatus && d.sketchStatus !== 'accepted' ? ' · 待核对' : ''}
               </button>
             ))}
           </div>
@@ -468,7 +583,14 @@ export default function App() {
               result={sunlightRun?.result}
               pythonOk={sunlightPythonOk}
               busy={busy}
-              canRun={Boolean(sessionId && currentRevisionId && viewerContent.kind === 'model')}
+              canRun={Boolean(
+                sessionId &&
+                  currentRevisionId &&
+                  viewerContent.kind === 'model' &&
+                  (SKETCH_HUMAN_REVIEW_ENABLED
+                    ? !viewerContent.model.model.sketchId || viewerContent.model.model.sketchStatus === 'accepted'
+                    : viewerContent.model.model.sketchStatus !== 'rejected'),
+              )}
               onRun={handleRunSunlight}
               onShowMap={() => handleViewerDisplayChange('sunlight')}
               onSaveConfig={handleSaveSunlightConfig}
@@ -483,6 +605,11 @@ export default function App() {
         onDisplayModeChange={handleViewerDisplayChange}
         onShow3dChange={setViewer3d}
       />
+      {SKETCH_HUMAN_REVIEW_ENABLED && sessionId && sketchReport && sketchReviewOpen && <SketchReviewPanel
+        key={sketchReport.revisionId} sessionId={sessionId} report={sketchReport} busy={busy} notice={notice}
+        onClose={() => setSketchReviewOpen(false)} onCorrect={(message) => { setSketchReviewOpen(false); void handleSend(message, 'sketch'); }}
+        onConfirm={handleConfirmSketch}
+      />}
     </div>
   );
 }

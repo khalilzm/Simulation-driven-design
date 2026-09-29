@@ -7,17 +7,17 @@ import { echoAdapter } from '../src/providers/echo';
 test('claude 首轮命令构造', () => {
   const c = claudeCmd({ message: 'hi', cwd: '/tmp' });
   assert.equal(c.cmd, 'claude');
-  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits']);
+  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Read,Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits']);
 });
 
 test('claude 续跑命令构造', () => {
   const c = claudeCmd({ message: 'hi', cwd: '/tmp', nativeSessionId: 'sess-9' });
-  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits', '--resume', 'sess-9']);
+  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Read,Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits', '--resume', 'sess-9']);
 });
 
 test('claude 带系统提示词', () => {
   const c = claudeCmd({ message: 'hi', cwd: '/tmp', systemPrompt: '你是空间设计 Agent' });
-  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits', '--append-system-prompt', '你是空间设计 Agent']);
+  assert.deepEqual(c.args, ['-p', '--output-format', 'stream-json', '--verbose', '--bare', '--tools', 'Read,Write', '--disable-slash-commands', '--effort', 'low', '--permission-mode', 'acceptEdits', '--append-system-prompt', '你是空间设计 Agent']);
 });
 
 test('claude 事件归一化', () => {

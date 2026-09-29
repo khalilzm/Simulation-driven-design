@@ -6,6 +6,9 @@ import type {
   StreamEvent,
   SunlightConfig,
   SunlightResult,
+  SketchSource,
+  SketchReport,
+  SpaceTaskMode,
 } from '@sdd/shared';
 
 export interface StatusResponse {
@@ -43,7 +46,7 @@ async function streamNdjson(r: Response, onEvent: (e: StreamEvent) => void): Pro
 }
 
 export async function streamChat(
-  body: { provider: ProviderId; sessionId?: string; message: string; parentRevisionId?: string | null },
+  body: { provider: ProviderId; sessionId?: string; message: string; parentRevisionId?: string | null; mode?: SpaceTaskMode; sketchId?: string },
   onEvent: (e: StreamEvent) => void,
 ): Promise<void> {
   const r = await fetch('/api/chat', {
@@ -63,7 +66,7 @@ export async function uploadSketch(
   sessionId: string | undefined,
   filename: string,
   contentBase64: string,
-): Promise<{ sessionId: string; file: { name: string; size: number } }> {
+): Promise<{ sessionId: string; file: { name: string; size: number }; sketch: SketchSource }> {
   const r = await fetch('/api/uploads', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -71,7 +74,7 @@ export async function uploadSketch(
   });
   const j = (await r.json().catch(() => ({}))) as { error?: string };
   if (!r.ok) throw new Error(j.error ?? `上传失败: ${r.status}`);
-  return j as { sessionId: string; file: { name: string; size: number } };
+  return j as { sessionId: string; file: { name: string; size: number }; sketch: SketchSource };
 }
 
 /** @deprecated 使用 uploadSketch */
@@ -88,13 +91,15 @@ export interface DesignSummary {
   parentRevisionId: string | null;
   createdAt: string;
   valid?: boolean;
+  sketchId?: string;
+  sketchStatus?: SketchReport['status'];
 }
 
 export async function listDesigns(sessionId: string): Promise<DesignSummary[]> {
   const r = await fetch(`/api/designs/${sessionId}`);
   if (!r.ok) throw new Error(`列出版本失败: ${r.status}`);
   const j = (await r.json()) as { designs: DesignSummary[] };
-  return j.designs.filter((design) => design.valid !== false);
+  return j.designs.filter((design) => design.valid !== false || !!design.sketchId);
 }
 
 export interface SaveDesignResult {
@@ -205,11 +210,29 @@ export async function generate(
   provider: ProviderId,
   onEvent: (e: StreamEvent) => void,
   parentRevisionId?: string | null,
+  task?: { mode: SpaceTaskMode; sketchId?: string },
 ): Promise<void> {
   const r = await fetch('/api/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, provider, parentRevisionId }),
+    body: JSON.stringify({ sessionId, provider, parentRevisionId, ...task }),
   });
   await streamNdjson(r, onEvent);
+}
+
+export async function loadSketchReport(sessionId: string, revisionId: string): Promise<SketchReport> {
+  const r = await fetch(`/api/sketches/${sessionId}/${revisionId}`);
+  if (!r.ok) throw new Error(`读取草图还原记录失败: ${r.status}`);
+  return r.json();
+}
+
+export async function confirmSketchReport(sessionId: string, revisionId: string, body: {
+  extractionHash?: string; confirm: boolean; wallId?: string; lengthM?: number;
+}): Promise<SketchReport> {
+  const r = await fetch(`/api/sketches/${sessionId}/${revisionId}/confirm`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error ?? '确认失败');
+  return data;
 }
