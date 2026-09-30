@@ -63,6 +63,8 @@ export interface Wall {
   thickness: number;
   height: number;
   fixed: boolean;
+  /** 结构角色：structural 承重墙（默认不可移动）、partition 隔墙、curtain 幕墙、unknown 未知。 */
+  role?: 'structural' | 'partition' | 'curtain' | 'unknown';
   /** v2 布局生成的构件；未标记的旧构件按既有建筑保留。 */
   generatedBy?: 'layout-v2';
   /** 构件类型引用，如 wall-int-200 */

@@ -6,8 +6,8 @@ import shutil
 from pathlib import Path
 from typing import Any, Dict, List
 
-from hb_build import build_honeybee_model
-from grid_pack import make_legend, pack_grids_with_hours, grid_sensor_areas
+from hb_build import build_honeybee_model, sensor_space_ids
+from grid_pack import make_legend, pack_grid_with_attribution, grid_sensor_areas
 from sunlight_metrics import package_results
 from wea_from_config import build_wea
 
@@ -113,11 +113,12 @@ def run_radiance_recipe(model: Dict[str, Any], config: Dict[str, Any], output_di
         return _fail(f"传感器数不一致: recipe {len(flat)} vs 模型 {expected}")
 
     legend, legend_par = make_legend(config)
-    grid_exports = pack_grids_with_hours(grids, flat, legend_par)
+    grid = grids[0]
+    space_ids = sensor_space_ids(model, grid.sensors)
+    grid_exports = pack_grid_with_attribution(grid, space_ids, flat, legend_par)
 
     result = package_results(
-        [grid.room_identifier or "" for grid in grids for _ in grid.sensors],
-        flat, grid_sensor_areas(grids, model), config, ENGINE_ID, model.get("spaces", []),
+        space_ids, flat, grid_sensor_areas(grids, model), config, ENGINE_ID, model.get("spaces", []),
     )
     result["legend"] = legend
     result["grids"] = grid_exports

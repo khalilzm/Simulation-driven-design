@@ -51,8 +51,9 @@ export async function renderSketchOverlay(cwd: string, report: SketchReport): Pr
   }
   for (const divider of extraction?.dividers ?? []) polyline(divider.points, '#7b1fa2', 2, '6 3');
   for (const item of extraction?.labels ?? []) {
-    label(item.point, `${item.id}: ${item.text}`, '#7b1fa2');
-    lines.push(`<circle cx="${item.point[0]}" cy="${item.point[1]}" r="3" fill="#7b1fa2"/>`);
+    const color = item.kind === 'dimension' ? '#00695c' : '#7b1fa2';
+    label(item.point, `${item.id}: ${item.text}`, color);
+    lines.push(`<circle cx="${item.point[0]}" cy="${item.point[1]}" r="3" fill="${color}"/>`);
   }
   for (const issue of report.issues) if (issue.point && issue.severity !== 'info') {
     lines.push(`<circle cx="${issue.point[0]}" cy="${issue.point[1]}" r="${font}" fill="none" stroke="#d32f2f" stroke-width="2"/>`);

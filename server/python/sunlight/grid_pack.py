@@ -58,6 +58,37 @@ def pack_grids_with_hours(
     return out
 
 
+def pack_grid_with_attribution(
+    grid: SensorGrid,
+    space_ids: Sequence[str],
+    sensor_hours: Sequence[float],
+    legend_par: LegendParameters,
+) -> List[Dict[str, Any]]:
+    """将整块楼板网格按传感器归属拆成每区域一块导出（含开放区域）。"""
+    if len(space_ids) != len(sensor_hours) or len(grid.sensors) != len(sensor_hours):
+        raise ValueError("传感器、归属与日照时长数量不一致")
+    mesh = grid.mesh
+    if mesh is None or len(mesh.faces) != len(grid.sensors):
+        raise ValueError(f"SensorGrid {grid.identifier} 的网格面与传感器不一一对应")
+    vertices = [[v.x, v.y, v.z] for v in mesh.vertices]
+    groups: Dict[str, List[int]] = {}
+    for i, sid in enumerate(space_ids):
+        groups.setdefault(sid, []).append(i)
+    out: List[Dict[str, Any]] = []
+    for sid in sorted(groups):
+        indices = groups[sid]
+        subset_hours = [float(sensor_hours[i]) for i in indices]
+        out.append({
+            "gridId": grid.identifier if len(groups) == 1 else f"{grid.identifier}-{sid}",
+            "spaceId": sid,
+            "vertices": vertices,
+            "faces": [list(mesh.faces[i]) for i in indices],
+            "hours": subset_hours,
+            "faceColors": value_colors_hex(subset_hours, legend_par),
+        })
+    return out
+
+
 def target_min_hours(config: Dict[str, Any]) -> float | None:
     targets = config.get("targets") or []
     if not targets:

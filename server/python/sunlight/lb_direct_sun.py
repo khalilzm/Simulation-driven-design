@@ -5,8 +5,8 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from honeybee.model import Model
-from grid_pack import make_legend, pack_grids_with_hours, grid_sensor_areas
-from hb_build import build_honeybee_model
+from grid_pack import make_legend, pack_grid_with_attribution, grid_sensor_areas
+from hb_build import build_honeybee_model, sensor_space_ids
 from sunlight_metrics import package_results
 from sunlight_time import sun_intervals
 
@@ -82,11 +82,11 @@ def run_honeybee_direct_sun(
     if not grids:
         return _fail("Honeybee 未生成任何 SensorGrid")
 
-    all_sensors: List[Tuple[str, str, Vec3]] = []
-    for grid in grids:
-        sid = grid.room_identifier or ""
-        for sens in grid.sensors:
-            all_sensors.append((sid, grid.identifier, sens.pos))
+    grid = grids[0]
+    space_ids = sensor_space_ids(model, grid.sensors)
+    all_sensors: List[Tuple[str, str, Vec3]] = [
+        (space_ids[i], grid.identifier, sens.pos) for i, sens in enumerate(grid.sensors)
+    ]
 
     triangles = _shade_triangles(hb)
     hours: List[float] = [0.0] * len(all_sensors)
@@ -99,10 +99,10 @@ def run_honeybee_direct_sun(
                     hours[i] += duration_hours
 
     legend, legend_par = make_legend(config)
-    grid_exports = pack_grids_with_hours(grids, hours, legend_par)
+    grid_exports = pack_grid_with_attribution(grid, space_ids, hours, legend_par)
 
     result = package_results(
-        [sid for sid, _gid, _pos in all_sensors], hours, grid_sensor_areas(grids, model),
+        space_ids, hours, grid_sensor_areas(grids, model),
         config, ENGINE_ID, model.get("spaces", []),
     )
     result["legend"] = legend

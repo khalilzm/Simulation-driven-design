@@ -124,17 +124,15 @@ test('后续定点修正只调用一次模型，保留其他对象并产生新�
   assert.equal(result.timings!.stages.filter((stage) => stage.phase === 'patch').length, 1);
 });
 
-test('确定性几何错误仍会按对象修正，三轮失败后停止并保留耗时', async (t) => {
+test('失效宿主只产生 review 提示，不再触发修正循环或拒绝', async (t) => {
   const s = await setup(t), calls: ChatTurnInput[] = [];
   s.extraction.openings[0].wallId = 'missing-wall';
-  const adapter = adapterFor(s.extraction, calls);
-  await runSketchTurn({ ...s, revisionId: 'rev-0001', message: '还原' }, adapter, () => {});
+  await runSketchTurn({ ...s, revisionId: 'rev-0001', message: '还原' }, adapterFor(s.extraction, calls), () => {});
   const report = readSketchReport(s.cwd, 'rev-0001')!;
-  assert.equal(report.status, 'rejected');
-  assert.deepEqual(calls.map((call) => call.imagePhase), ['extract', 'patch', 'patch']);
-  assert.ok(report.issues.some((i) => i.severity === 'error'));
-  assert.equal(report.timings!.stages.filter((stage) => stage.phase === 'compile').length, 3);
-  assert.equal(isAcceptedDesign(s.sessionId, 'rev-0001'), false);
+  assert.equal(report.status, 'accepted');
+  assert.equal(calls.length, 1, '缺信息不触发补丁循环');
+  assert.ok(report.issues.some((i) => i.id === 'host-D1' && i.severity === 'review'));
+  assert.equal(isAcceptedDesign(s.sessionId, 'rev-0001'), true);
 });
 
 test('格式校验失败只重试识别，成功后不再复核，失败阶段也有计时', async (t) => {
@@ -155,11 +153,13 @@ test('格式校验失败只重试识别，成功后不再复核，失败阶段�
   assert.deepEqual(report.timings!.stages[0].provider, { totalMs: 1, runMs: 1 });
 });
 
-test('未生成的未知开口不能通过确认按钮绕过完整性检查', async (t) => {
+test('未生成的未知开口不再阻断确认，保留为提示', async (t) => {
   const s = await setup(t); s.extraction.openings[0].kind = 'unknown';
   await runSketchTurn({ ...s, revisionId: 'rev-0001', message: '还原' }, adapterFor(s.extraction, []), () => {});
   const report = readSketchReport(s.cwd, 'rev-0001')!;
-  await assert.rejects(confirmSketch(s.cwd, report, { confirm: true, extractionHash: report.extractionHash }), /D1/);
+  const accepted = await confirmSketch(s.cwd, report, { confirm: true, extractionHash: report.extractionHash });
+  assert.equal(accepted.status, 'accepted');
+  assert.equal(isAcceptedDesign(s.sessionId, accepted.revisionId), true);
 });
 
 test('模型明确报告不支持图片时立即停止，不退回文字猜测或反复重试', async (t) => {

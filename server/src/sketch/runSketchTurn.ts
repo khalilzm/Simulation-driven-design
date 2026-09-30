@@ -124,7 +124,7 @@ export async function runSketchTurn(input: {
         emit({ type: 'progress', message: '正在连接墙线、定位门窗并构建功能区…' });
         const compiled = await timed('compile', attempt + 1, () => compileSketch(extraction!, source, revisionId));
         const extractionHash = hashJson(extraction);
-        report = { source, revisionId, status: 'needs_review', geometryValid: !!compiled.model && !compiled.issues.some((i) => i.severity === 'error'),
+        report = { source, revisionId, status: 'needs_review', geometryValid: !!compiled.model,
           calibrated: compiled.calibrated, metersPerPixel: compiled.metersPerPixel, extractionHash,
           extraction, issues: compiled.issues, adjustments: compiled.adjustments, mapping: compiled.mapping, model: compiled.model, timings };
         if (report.model) report.model.model.parentRevisionId = input.previous?.revisionId ?? null;

@@ -10,8 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@doodle3d/clipper-js": "^1.0.11",
     "@glodon/concetto-math": "0.9.0",
-    "@glodon/concetto-viewer": "0.13.17",
+    "@glodon/concetto-viewer": "0.13.18",
     "@sdd/shared": "0.1.0",
     "dxf-parser": "^1.1.2",
     "earcut": "^3.2.3",

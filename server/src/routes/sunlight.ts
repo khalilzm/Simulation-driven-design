@@ -4,6 +4,7 @@ import path from 'node:path';
 import { CAPABILITIES, parseSunlightConfig } from '@sdd/shared';
 import { workspacesDir } from '../config';
 import { loadDesign, isAcceptedDesign } from '../model/store';
+import { readSketchReport } from '../sketch/runSketchTurn';
 import { ensureSunlightConfig } from '../sunlight/ensureConfig';
 import { checkSunlightPython, runSunlightAnalysis } from '../sunlight/run';
 
@@ -52,6 +53,10 @@ sunlightRouter.post('/sunlight/run', async (req, res) => {
     return;
   }
 
+  // 草图还原的缺信息/假设以 review 警告记录在报告里；仿真阶段把它们透出，而不是在还原阶段拦截。
+  const reconstructionWarnings = readSketchReport(path.join(workspacesDir, sessionId), revisionId)
+    ?.issues.filter((i) => i.severity === 'review').map((i) => i.message) ?? [];
+
   const { modelPath, configPath } = designPaths(sessionId, revisionId);
   const provision = ensureSunlightConfig(configPath);
   if (provision.errors?.length) {
@@ -88,6 +93,7 @@ sunlightRouter.post('/sunlight/run', async (req, res) => {
       sunlightConfigCreated: provision.created,
       config: parsedConfig.config,
       result: out.result,
+      reconstructionWarnings,
     });
   } catch (err) {
     res.status(500).json({

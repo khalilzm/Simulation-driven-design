@@ -43,6 +43,8 @@ export interface SketchLabel {
   id: string;
   text: string;
   usage: string | null;
+  /** 'function' for room/area names, 'dimension' for verbatim dimension-number text (e.g. 3600, 3.6m). */
+  kind: 'function' | 'dimension';
   point: Vec2;
 }
 

@@ -1,9 +1,10 @@
 import {
-  centerlineWallPolygon,
   polygonGeometryError,
   resolveSpaceStyle,
+  wallEndTrims,
   wallSolidPolylines,
   wallSolidPrisms,
+  wallStripPolygon,
   type Opening,
   type SpaceModel,
   type SunlightResult,
@@ -123,18 +124,22 @@ function closeRing(pts: [number, number][]): [number, number][] {
   return [...pts, first];
 }
 
-/** 由墙中线 + 厚度生成填充 Mesh（z 略高于功能区，便于压盖半透明底图） */
+/** 由墙中线 + 厚度生成填充 Mesh（z 略高于功能区，便于压盖半透明底图）；接头处逐墙裁剪。 */
 export function modelToWallFills(model: SpaceModel): PolygonFill[] {
   const fills: PolygonFill[] = [];
   model.walls.forEach((w, i) => {
     const pts = w.geometry.points;
     if (pts.length < 2 || w.thickness <= 0) return;
-    for (const line of wallSolidPolylines(w, model.openings)) {
-      const outline = centerlineWallPolygon(line, w.thickness);
-      if (!outline || outline.length < 3) continue;
+    const trims = wallEndTrims(w, model.walls);
+    const solidLines = wallSolidPolylines(w, model.openings);
+    solidLines.forEach((line, li) => {
+      const startTrim = li === 0 ? trims.start : { kind: 'butt' as const };
+      const endTrim = li === solidLines.length - 1 ? trims.end : { kind: 'butt' as const };
+      const outline = wallStripPolygon(line, w.thickness, startTrim, endTrim);
+      if (!outline || outline.length < 3) return;
       const mesh = triangulatePolygonEarcut(closeRing(outline), 0.045 + i * 0.00001);
       if (mesh) fills.push({ mesh, color: WALL_FILL_COLOR_2D, opacity: 1 });
-    }
+    });
   });
   return fills;
 }
@@ -203,25 +208,29 @@ function frameBox(
   );
 }
 
-/** 3D 墙体：中线条带 + miter 轮廓，按门/窗真实高度在 (弧长 × 高度) 平面做布尔减后分段挤出。 */
+/** 3D 墙体：中线条带 + miter 轮廓（含接头裁剪），按门/窗真实高度在 (弧长 × 高度) 平面做布尔减后分段挤出。 */
 export function modelToWallBoxes3D(model: SpaceModel): PolygonFill[] {
   const fills: PolygonFill[] = [];
   model.walls.forEach((wall, wi) => {
     const pts = wall.geometry.points;
     if (pts.length < 2 || wall.thickness <= 0) return;
+    const trims = wallEndTrims(wall, model.walls);
+    const prisms = wallSolidPrisms(wall, model.openings);
     let bi = 0;
-    for (const prism of wallSolidPrisms(wall, model.openings)) {
-      const outline = centerlineWallPolygon(prism.points, wall.thickness);
-      if (!outline || outline.length < 3) continue;
+    prisms.forEach((prism, pi) => {
+      const startTrim = pi === 0 ? trims.start : { kind: 'butt' as const };
+      const endTrim = pi === prisms.length - 1 ? trims.end : { kind: 'butt' as const };
+      const outline = wallStripPolygon(prism.points, wall.thickness, startTrim, endTrim);
+      if (!outline || outline.length < 3) return;
       const mesh = extrudePolygonPrism(closeRing(outline), prism.z0, prism.z1);
-      if (!mesh) continue;
+      if (!mesh) return;
       fills.push({
         mesh,
         color: WALL_FILL_COLOR_3D,
         opacity: 1,
         meshId: `wall3d-${wi}-${bi++}`,
       });
-    }
+    });
   });
   return fills;
 }

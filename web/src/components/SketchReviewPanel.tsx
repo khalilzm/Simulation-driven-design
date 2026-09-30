@@ -19,6 +19,8 @@ export function SketchReviewPanel({ sessionId, report, busy, notice, onClose, on
   const [lengthM, setLengthM] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const { source, extraction } = report;
+  const functionalLabels = extraction?.labels.filter((l) => l.kind !== 'dimension') ?? [];
+  const dimensionLabels = extraction?.labels.filter((l) => l.kind === 'dimension') ?? [];
   const issuePoint = (objectId?: string): Vec2 | undefined => {
     const label = extraction?.labels.find((l) => l.id === objectId);
     const wall = extraction?.walls.find((w) => w.id === objectId);
@@ -37,7 +39,7 @@ export function SketchReviewPanel({ sessionId, report, busy, notice, onClose, on
     </header>
     <div className="sketch-review-controls">
       <label>还原叠加 <input aria-label="还原叠加透明度" type="range" min="0" max="1" step="0.05" value={opacity} onChange={(e) => setOpacity(Number(e.target.value))} /></label>
-      <span>蓝：墙 · 绿：窗 · 橙：门 · 紫：标注 · 红：问题</span>
+      <span>蓝：墙 · 绿：窗 · 橙：门 · 紫：功能标注 · 青：尺寸数字 · 红：问题</span>
     </div>
     <div className="sketch-review-image">
       <svg viewBox={`0 0 ${source.width} ${source.height}`} role="img" aria-label="原始草图与还原结果叠加">
@@ -48,7 +50,7 @@ export function SketchReviewPanel({ sessionId, report, busy, notice, onClose, on
     </div>
     <div className="sketch-review-details">
       {notice && <p role="status">{notice}</p>}
-      <p>{extraction?.walls.length ?? 0} 条识别墙线 · {extraction?.openings.length ?? 0} 个门窗/开口 · {extraction?.labels.length ?? 0} 个功能标注 · {report.calibrated ? '已有尺寸依据' : '比例预览，尚无实际尺寸'}</p>
+      <p>{extraction?.walls.length ?? 0} 条识别墙线 · {extraction?.openings.length ?? 0} 个门窗/开口 · {functionalLabels.length} 个功能标注 · {dimensionLabels.length} 个尺寸数字 · {report.calibrated ? '已有尺寸依据' : '比例预览，尚无实际尺寸'}</p>
       {report.timings && <p>本次处理 {(report.timings.durationMs / 1000).toFixed(1)} 秒 · 模型调用 {report.timings.stages.filter((s) => s.phase === 'recognize' || s.phase === 'patch').length} 次</p>}
       {report.adjustments.length > 0 && <details><summary>查看 {report.adjustments.length} 处端点调整</summary><ul>{report.adjustments.map((a, i) => <li key={i}>{a.objectId}：移动 {a.distancePx.toFixed(2)} 像素</li>)}</ul></details>}
       <ul className="sketch-review-issues">{report.issues.map((issue) => <li key={issue.id}>

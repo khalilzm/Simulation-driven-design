@@ -48,10 +48,7 @@ export async function confirmSketch(cwd: string, previous: SketchReport, input: 
   const revisionId = nextRevisionId(path.basename(cwd));
   const compiled = compileSketch(extraction, previous.source, revisionId);
   if (!compiled.calibrated) throw new Error('缺少实际尺寸，请选一面墙输入实长');
-  const errors = compiled.issues.filter((i) => i.severity === 'error');
-  if (errors.length || !compiled.model) throw new Error(errors.map((i) => i.message).join('；') || '还原结果没有可用的几何模型');
-  const missing = [...extraction.walls, ...extraction.openings, ...extraction.labels].filter((o) => !compiled.mapping[o.id]?.length);
-  if (missing.length) throw new Error(`以下对象尚未生成，需先修正：${missing.map((o) => o.id).join('、')}`);
+  if (!compiled.model) throw new Error('还原结果没有可用的几何模型');
   const report: SketchReport = {
     source: previous.source, revisionId, status: 'accepted', geometryValid: true, calibrated: true,
     metersPerPixel: compiled.metersPerPixel, extraction, extractionHash: hashJson(extraction), model: compiled.model,

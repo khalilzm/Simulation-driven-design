@@ -5,6 +5,7 @@ import {
   GTextSprite,
   ViewType,
 } from '@glodon/concetto-viewer';
+import { Sphere, Vector3 } from 'three';
 import {
   polygonBBoxMinExtent,
   polygonInteriorLabelPoint,
@@ -32,6 +33,23 @@ const LABEL_HEIGHT_MAX = 0.8;
 const LABEL_HEIGHT_RATIO = 0.45;
 
 const VIEWER_SSAO_DEFAULT = { enabled: true, radius: 2.0 };
+
+/** concetto-viewer 为 Z-up；3D 旋转后切回 2D 时 setView 不会恢复 up，需先摆正再 fitBounds。 */
+function alignPlan2dCamera(viewer: CCViewerApp): void {
+  const bounds = viewer.bounds;
+  if (bounds.isEmpty()) return;
+
+  const center = bounds.getCenter(new Vector3());
+  const sphere = bounds.getBoundingSphere(new Sphere());
+  const dist = Math.max(sphere.radius * 3, 1);
+
+  const { camera, control } = viewer.navigation;
+  camera.up.set(0, 0, 1);
+  control.target.copy(center);
+  camera.position.set(center.x, center.y - 1e-6, center.z + dist);
+  camera.lookAt(control.target);
+  control.update();
+}
 
 /** 2D 日照伪彩不应受 CSM/SSAO/地面影影响读数 */
 function applySunlight2dPresentation(viewer: CCViewerApp, sunlight2d: boolean): void {
@@ -150,22 +168,21 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       const useSunlight = content.view === 'sunlight' && content.sunlight?.status === 'completed';
       const sun = content.sunlight;
       const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun) : [];
-      const meshEdges3d = { meshEdges: true as const };
       if (is3d) {
         for (const fill of modelToSpaceFills(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, meshEdges3d);
+          addSpaceFillMesh(viewer, fill, overlays);
           added = true;
         }
         for (const fill of modelToWallBoxes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true, ...meshEdges3d });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
           added = true;
         }
         for (const fill of modelToDoorMeshes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true, ...meshEdges3d });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, physical: true });
           added = true;
         }
         for (const fill of modelToWindowMeshes3D(content.model)) {
-          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true, ...meshEdges3d });
+          addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
           added = true;
         }
       } else if (useSunlight && gridFills.length) {
@@ -195,13 +212,14 @@ export function createScene(container: HTMLDivElement): ViewerScene {
         addSpaceLabels(viewer, content.model, overlays);
       }
     }
-    if (added) viewer.fitBounds();
     if (navigationMode !== null) {
       viewer.navigation.setView(navigationMode);
       viewer.navigation.setControlMode(navigationMode);
       viewer.navigation.setControlRotate(navigationMode === ViewType.ThreeD);
+      if (navigationMode === ViewType.TwoD) alignPlan2dCamera(viewer);
     }
-    viewer.setEdgeDetection({ enabled: false });
+    if (added) viewer.fitBounds();
+    viewer.setEdgeDetection({ enabled: is3d });
     const sunlight2d = content.kind === 'model' && content.view === 'sunlight';
     applySunlight2dPresentation(viewer, sunlight2d);
   };

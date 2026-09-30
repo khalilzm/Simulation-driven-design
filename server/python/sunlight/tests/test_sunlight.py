@@ -9,8 +9,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from grid_pack import grid_sensor_areas, make_legend, pack_grids_with_hours
-from hb_build import build_honeybee_model
+from grid_pack import grid_sensor_areas, make_legend, pack_grids_with_hours, pack_grid_with_attribution
+from hb_build import build_honeybee_model, sensor_space_ids
 from lb_direct_sun import run_honeybee_direct_sun, _shade_triangles, _ray_triangle
 from sunlight_metrics import package_results
 from sunlight_time import analysis_period, sun_intervals
@@ -30,6 +30,10 @@ def config(**changes):
 
 def rect(x0, y0, x1, y1):
     return [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]]
+
+
+def space(result, sid):
+    return next(s for s in result["spaces"] if s["spaceId"] == sid)
 
 
 def model(roof=False, walls=False):
@@ -53,7 +57,7 @@ class CivilTimeTests(unittest.TestCase):
         self.assertIsNotNone(direction)
         self.assertGreater(direction[2], 0.98)
         result = run_honeybee_direct_sun(model(), cfg)
-        self.assertEqual(result["spaces"][0]["minHours"], 1)
+        self.assertEqual(space(result, "room")["minHours"], 1)
 
     def test_same_instant_in_summer_time_and_utc(self):
         cfg = config(location={"latitude": 40.7, "longitude": -74,
@@ -109,7 +113,7 @@ class SensorDirectionTests(unittest.TestCase):
                 with self.subTest(ring=ring, reverse=reverse):
                     scene = model()
                     scene['floor']['elevation'] = 4
-                    scene['spaces'][0]['boundary'] = list(reversed(ring)) if reverse else ring
+                    scene['floor']['boundary'] = list(reversed(ring)) if reverse else ring
                     before = copy.deepcopy(scene)
                     _, grids = build_honeybee_model(scene, config())
                     self.assertEqual(scene, before)
@@ -177,6 +181,19 @@ class RayPhysicsTests(unittest.TestCase):
             self.assertTrue(blocked(4.5, 2.5))
             self.assertAlmostEqual(sum(shade.area for shade in hb.orphaned_shades) / scale ** 2, 27.6)
 
+    def test_passage_transparent_door_opaque(self):
+        scene = model()
+        scene["walls"] = [{"id": "south", "height": 3, "geometry": {"points": [[0, 0], [10, 0]]}}]
+        scene["openings"] = [
+            {"id": "door", "hostWallId": "south", "position": 3, "width": 2, "height": 2.1, "sillHeight": 0},
+            {"id": "pass", "hostWallId": "south", "position": 7, "width": 2, "height": 2.1, "sillHeight": 0},
+        ]
+        scene["doors"] = [{"id": "d1", "openingId": "door"}]
+        hb, _ = build_honeybee_model(scene, config())
+        triangles = _shade_triangles(hb)
+        self.assertTrue(any(_ray_triangle((3, -1, 1.0), (0, 1, 0), tri) is not None for tri in triangles))
+        self.assertFalse(any(_ray_triangle((7, -1, 1.0), (0, 1, 0), tri) is not None for tri in triangles))
+
     def test_window_without_sill_defaults_to_floor_but_keeps_wall_above(self):
         scene = model()
         scene["walls"] = [{"id": "south", "height": 3, "geometry": {"points": [[0, 0], [10, 0]]}}]
@@ -198,8 +215,8 @@ class RayPhysicsTests(unittest.TestCase):
         cfg = config()
         open_result = run_honeybee_direct_sun(model(), cfg)
         roof_result = run_honeybee_direct_sun(model(roof=True), cfg)
-        self.assertEqual(open_result["spaces"][0]["minHours"], 1)
-        self.assertEqual(roof_result["spaces"][0]["maxHours"], 0)
+        self.assertEqual(space(open_result, "room")["minHours"], 1)
+        self.assertEqual(space(roof_result, "room")["maxHours"], 0)
 
     def test_exact_hour_target_is_not_failed_by_roundoff(self):
         result = run_honeybee_direct_sun(model(), config(
@@ -210,12 +227,12 @@ class RayPhysicsTests(unittest.TestCase):
     def test_windowless_enclosure_receives_no_direct_sun(self):
         result = run_honeybee_direct_sun(model(roof=True, walls=True), config())
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(result["spaces"][0]["maxHours"], 0)
+        self.assertEqual(space(result, "room")["maxHours"], 0)
 
     def test_night_completes_with_zero_hours(self):
         result = run_honeybee_direct_sun(model(), config(localTimeRange=["00:00", "01:00"]))
         self.assertEqual(result["status"], "completed")
-        self.assertEqual(result["spaces"][0]["maxHours"], 0)
+        self.assertEqual(space(result, "room")["maxHours"], 0)
 
     def test_north_rotation(self):
         cfg = config(localTimeRange=["09:00", "10:00"])
@@ -227,20 +244,25 @@ class RayPhysicsTests(unittest.TestCase):
 
 
 class AreaMetricsTests(unittest.TestCase):
-    def test_actual_mesh_areas_and_strict_sensor_mapping(self):
+    def test_whole_floor_grid_covers_open_area_and_strict_mapping(self):
         scene = model()
         scene["spaces"].append({"id": "large", "boundary": rect(2, 2, 5, 5)})
         _, grids = build_honeybee_model(scene, config())
+        self.assertEqual(len(grids), 1)
+        grid = grids[0]
         areas = grid_sensor_areas(grids, scene)
-        self.assertAlmostEqual(sum(areas), 13)
-        ids = [grid.room_identifier for grid in grids for _ in grid.sensors]
-        hours = [2 if sid == "large" else 0 for sid in ids]
-        cfg = config(targets=[{"spaceIds": ["room", "large"], "minHours": 1}])
-        result = package_results(ids, hours, areas, cfg, "test", scene["spaces"])
-        self.assertAlmostEqual(result["metrics"]["targetAreaRatio"], 9 / 13)
-        _, legend = make_legend(cfg)
+        self.assertAlmostEqual(sum(areas), 400, delta=0.5)  # 整块楼板 20×20
+        ids = sensor_space_ids(scene, grid.sensors)
+        self.assertEqual(len(ids), len(grid.sensors))
+        self.assertEqual(set(ids), {"room", "large", "open"})
+        # 整块网格按归属拆分导出，每区域一块，且面与传感器一一对应
+        _, legend = make_legend(config())
+        hours = [0.0] * len(ids)
+        exports = pack_grid_with_attribution(grid, ids, hours, legend)
+        self.assertEqual({e["spaceId"] for e in exports}, {"room", "large", "open"})
+        self.assertEqual(sum(len(e["faces"]) for e in exports), len(ids))
         with self.assertRaises(ValueError):
-            pack_grids_with_hours(grids, hours[:-1], legend)
+            pack_grid_with_attribution(grid, ids, hours[:-1], legend)
 
     def test_unequal_faces_weight_mean_and_target_ratio(self):
         cfg = config(targets=[{"spaceIds": ["room"], "minHours": 1}])

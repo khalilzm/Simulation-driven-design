@@ -6,6 +6,7 @@ export * from './model';
 export * from './spaceUsage';
 export * from './polygonGeometry';
 export * from './wallStrip';
+export * from './wallJunction';
 export * from './wallOpenings';
 export * from './sunlight';
 export * from './sketch';

@@ -67,7 +67,8 @@ export function parseExtraction(raw: unknown, source: SketchSource): SketchExtra
   });
   const labels = array(root.labels, 'labels').map((raw) => {
     const l = object(raw, 'label');
-    return { id: id(l.id), text: string(l.text, 'text'), usage: l.usage == null ? null : string(l.usage, 'usage'), point: point(l.point) };
+    return { id: id(l.id), text: string(l.text, 'text'), usage: l.usage == null ? null : string(l.usage, 'usage'),
+      kind: l.kind == null ? 'function' : choice(l.kind, ['function', 'dimension'], 'kind'), point: point(l.point) };
   });
   const dividers = array(root.dividers ?? [], 'dividers').map((raw) => {
     const d = object(raw, 'divider');

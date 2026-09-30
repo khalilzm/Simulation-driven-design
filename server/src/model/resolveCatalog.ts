@@ -95,6 +95,11 @@ export function resolveComponentDefaults(model: SpaceModel): SpaceModel {
     if (!type || type.category !== 'wall') continue;
     if (type.defaults.thickness !== undefined) wall.thickness = type.defaults.thickness;
     if (type.defaults.height !== undefined) wall.height = type.defaults.height;
+    if (type.role) {
+      wall.role = type.role;
+      // 承重墙默认固定：物理承重，优化/迭代不应移动或删除。
+      if (type.role === 'structural') wall.fixed = true;
+    }
     wall.analysisProperties = { ...wall.analysisProperties, [TYPE_ID_KEY]: type.id };
     delete wall.analysisProperties[CUSTOM_COMPONENT_KEY];
   }

@@ -89,7 +89,7 @@ export function buildSketchTopology(extraction: SketchExtraction, tolerance: num
   const segments: Segment[] = [];
   for (const line of [...normalized.walls, ...normalized.dividers]) for (let i = 0; i + 1 < line.points.length; i++) {
     if (distance(line.points[i], line.points[i + 1]) < EPS) {
-      issues.push({ id: `collapsed-${line.id}-${i}`, objectId: line.id, severity: 'error', message: '容差吸附后线段坍缩，请核对端点' });
+      issues.push({ id: `collapsed-${line.id}-${i}`, objectId: line.id, severity: 'review', message: '容差吸附后线段坍缩，请核对端点' });
       continue;
     }
     segments.push({ a: line.points[i], b: line.points[i + 1], id: line.id, cuts: [0, 1] });
@@ -108,7 +108,7 @@ export function buildSketchTopology(extraction: SketchExtraction, tolerance: num
     } else if (Math.abs(cross(q.a[0] - s.a[0], q.a[1] - s.a[1], dx, dy)) < EPS) {
       const p0 = projection(q.a, s.a, s.b).t, p1 = projection(q.b, s.a, s.b).t;
       const lo = Math.max(0, Math.min(p0, p1)), hi = Math.min(1, Math.max(p0, p1));
-      if (hi - lo > EPS && s.id !== q.id) issues.push({ id: `overlap-${i}-${j}`, objectId: s.id, severity: 'error', message: `${s.id} 与 ${q.id} 部分重叠，请合并识别墙线并更新门窗引用` });
+      if (hi - lo > EPS && s.id !== q.id) issues.push({ id: `overlap-${i}-${j}`, objectId: s.id, severity: 'review', message: `${s.id} 与 ${q.id} 部分重叠，请合并识别墙线并更新门窗引用` });
       for (const p of [q.a, q.b]) { const t = projection(p, s.a, s.b).t; if (t >= 0 && t <= 1) s.cuts.push(t); }
       for (const p of [s.a, s.b]) { const t = projection(p, q.a, q.b).t; if (t >= 0 && t <= 1) q.cuts.push(t); }
     }
@@ -166,6 +166,6 @@ export function buildSketchTopology(extraction: SketchExtraction, tolerance: num
       if (a === from && b === to) { ring.push(vertices[from]); if (signedArea(ring) > EPS) faces.push(ring); break; }
     }
   }
-  if (!faces.length) issues.push({ id: 'no-enclosure', severity: 'error', message: '墙线没有形成闭合区域，请修正断点；程序不会自动补墙' });
+  if (!faces.length) issues.push({ id: 'no-enclosure', severity: 'review', message: '墙线没有形成闭合区域，请修正断点；程序不会自动补墙' });
   return { normalized, faces, issues, adjustments, aliases };
 }

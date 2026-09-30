@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import math
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Sequence, Tuple
 
 from honeybee.model import Model
 from honeybee.shade import Shade
@@ -22,21 +22,51 @@ def _ring_to_face3d(ring: List[List[float]], z: float) -> Face3D:
     return face.flip() if face.normal.z < 0 else face
 
 
+OPEN_SPACE_ID = "open"
+
+
+def _point_in_polygon(x: float, y: float, ring: List[List[float]]) -> bool:
+    inside = False
+    n = len(ring)
+    if n < 3:
+        return False
+    j = n - 1
+    for i in range(n):
+        xi, yi = float(ring[i][0]), float(ring[i][1])
+        xj, yj = float(ring[j][0]), float(ring[j][1])
+        if ((yi > y) != (yj > y)) and (x < (xj - xi) * (y - yi) / (yj - yi + 1e-15) + xi):
+            inside = not inside
+        j = i
+    return inside
+
+
+def sensor_space_ids(model: Dict[str, Any], sensors: Sequence[Any]) -> List[str]:
+    """每个传感器归到包含它的 space；不在任何 space 内则归为开放区域。"""
+    spaces = model.get("spaces", [])
+    ids: List[str] = []
+    for sens in sensors:
+        x, y = float(sens.pos[0]), float(sens.pos[1])
+        sid = OPEN_SPACE_ID
+        for space in spaces:
+            if _point_in_polygon(x, y, space["boundary"]):
+                sid = space["id"]
+                break
+        ids.append(sid)
+    return ids
+
+
 def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> List[Shade]:
-    window_ops = {w["openingId"] for w in model.get("windows", [])}
+    door_ops = {d["openingId"] for d in model.get("doors", [])}
     shades: List[Shade] = []
     for wall in model.get("walls", []):
         pts = wall["geometry"]["points"]
         wh = float(wall.get("height", floor_h))
         z0 = elevation
-        z1 = elevation + wh
-        openings = [
+        # 透光洞口：窗 + 过道（凡不是门的开口）；门保持不透明遮挡。
+        transparent_ops = [
             op
             for op in model.get("openings", [])
-            if op["hostWallId"] == wall["id"] and op.get("id") not in window_ops
-        ]
-        win_ops = [
-            op for op in model.get("openings", []) if op["hostWallId"] == wall["id"] and op.get("id") in window_ops
+            if op["hostWallId"] == wall["id"] and op.get("id") not in door_ops
         ]
         cumulative = 0.0
         for i in range(len(pts) - 1):
@@ -46,7 +76,7 @@ def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> Lis
             if seg_len < 1e-6:
                 continue
             cuts = []
-            for op in win_ops:
+            for op in transparent_ops:
                 pos = float(op["position"]) - cumulative
                 w = float(op["width"])
                 a = max(0.0, pos - w / 2)
@@ -113,23 +143,11 @@ def build_honeybee_model(model: Dict[str, Any], config: Dict[str, Any]) -> Tuple
     ref_h = float(config["sensors"]["referenceHeightAboveFloor"])
     sensor_z = elevation + ref_h
 
-    grids: List[SensorGrid] = []
-    for space in model.get("spaces", []):
-        ring = space["boundary"]
-        sensor_face = _ring_to_face3d(ring, sensor_z)
-        try:
-            grid = SensorGrid.from_face3d(
-                f"grid-{space['id']}",
-                [sensor_face],
-                spacing,
-                None,
-                0,
-                False,
-            )
-            grid.room_identifier = space["id"]
-            grids.append(grid)
-        except AssertionError:
-            continue
+    # 整块楼板布点（含开放区域），传感器再按所属空间归属，避免开放区出现空洞。
+    floor_face = _ring_to_face3d(floor["boundary"], sensor_z)
+    grid = SensorGrid.from_face3d("grid-floor", [floor_face], spacing, None, 0, False)
+    grid.room_identifier = "floor"
+    grids: List[SensorGrid] = [grid]
 
     shades = _wall_shades(model, elevation, floor_h)
     if floor.get("topObstruction", False):

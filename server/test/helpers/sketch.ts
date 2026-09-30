@@ -20,7 +20,7 @@ export function sketchFixture(): SketchExtraction {
       { id: 'D1', kind: 'door', wallId: 'W5', position: 0.5, widthPx: 90, heightM: 2.1, sillHeightM: 0, hinge: 'start', opensTo: 'right', leafCount: 1 },
       { id: 'N1', kind: 'window', wallId: 'W1', position: 0.2, widthPx: 120, heightM: 1.2, sillHeightM: 0.9, hinge: null, opensTo: null, leafCount: null },
     ],
-    labels: [{ id: 'L1', text: '客厅', usage: '客厅', point: [300, 400] }, { id: 'L2', text: '主卧', usage: '卧室', point: [700, 400] }],
+    labels: [{ id: 'L1', text: '客厅', usage: '客厅', kind: 'function', point: [300, 400] }, { id: 'L2', text: '主卧', usage: '卧室', kind: 'function', point: [700, 400] }],
     dimensions: [{ id: 'M1', points: [[100, 100], [900, 100]], lengthM: 8, text: '8m' }],
     heightM: 3, dividers: [], uncertainties: [],
   };

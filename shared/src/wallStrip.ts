@@ -2,13 +2,13 @@ import type { Vec2 } from './model';
 
 const MITER_LIMIT = 4;
 
-function perpOffset(dx: number, dy: number, half: number): Vec2 {
+export function perpOffset(dx: number, dy: number, half: number): Vec2 {
   const len = Math.hypot(dx, dy);
   if (len < 1e-12) return [0, 0];
   return [(-dy / len) * half, (dx / len) * half];
 }
 
-function intersectLines(p: Vec2, d1: Vec2, q: Vec2, d2: Vec2): Vec2 | null {
+export function intersectLines(p: Vec2, d1: Vec2, q: Vec2, d2: Vec2): Vec2 | null {
   const cross = d1[0] * d2[1] - d1[1] * d2[0];
   if (Math.abs(cross) < 1e-12) return null;
   const rx = q[0] - p[0];
@@ -17,7 +17,7 @@ function intersectLines(p: Vec2, d1: Vec2, q: Vec2, d2: Vec2): Vec2 | null {
   return [p[0] + t * d1[0], p[1] + t * d1[1]];
 }
 
-function jointOffset(
+export function jointOffset(
   p: Vec2,
   dIn: Vec2,
   dOut: Vec2,

@@ -71,13 +71,16 @@ test('开放分界形成区域但不生成实体墙', () => {
   assert.equal(result.model!.spaces.length, 2);
 });
 
-test('失效宿主、越界洞口、冲突尺度均保留诊断，不能伪装完整', () => {
+test('失效宿主、越界洞口、冲突尺度均保留 review 诊断，不再拦截还原', () => {
   const input = sketchFixture(); input.openings[0].wallId = 'missing'; input.openings[1].position = 0;
   input.dimensions.push({ id: 'M2', points: [[100, 100], [900, 100]], lengthM: 20, text: '20m' });
   const result = compileSketch(input, sketchSource, 'rev-0001');
-  assert.ok(result.issues.filter((i) => i.severity === 'error').length >= 3);
-  assert.deepEqual(result.mapping.D1, []);
-  assert.deepEqual(result.mapping.N1, []);
+  assert.equal(result.issues.filter((i) => i.severity === 'error').length, 0, '识别缺信息/越界不产生 error');
+  assert.ok(result.issues.some((i) => i.id === 'host-D1' && i.severity === 'review'));
+  assert.ok(result.issues.some((i) => i.id === 'range-N1' && i.severity === 'review'));
+  assert.ok(result.issues.some((i) => i.id === 'scale-M1' && i.severity === 'review'));
+  assert.deepEqual(result.mapping.D1, [], '宿主缺失无法落位，仍不生成');
+  assert.deepEqual(result.mapping.N1, ['N1'], '越界洞口仍忠实生成，交由仿真提示');
 });
 
 test('缺少尺度和文字保留为待确认信息', () => {
@@ -86,6 +89,19 @@ test('缺少尺度和文字保留为待确认信息', () => {
   assert.equal(result.calibrated, false);
   assert.ok(result.issues.some((i) => i.id === 'scale-missing'));
   assert.equal(result.issues.filter((i) => i.id.startsWith('unlabelled-')).length, 2);
+});
+
+test('尺寸数字作为 dimension 标签忠实保留，不参与功能区命名', () => {
+  const input = sketchFixture();
+  input.labels.push({ id: 'DM1', text: '3600', usage: null, kind: 'dimension', point: [300, 400] });
+  input.labels.push({ id: 'DM2', text: '8m', usage: null, kind: 'dimension', point: [950, 50] });
+  const result = compileSketch(input, sketchSource, 'rev-0001');
+  assert.deepEqual(result.issues, [], '尺寸数字标签不产生诊断，也不触发 unlabelled/ambiguous');
+  assert.equal(result.model!.spaces.length, 2);
+  assert.ok(result.model!.spaces.every((s) => s.usage !== '3600' && s.usage !== '8m'), '尺寸数字不得成为房间名');
+  assert.equal(result.model!.spaces.find((s) => s.id === 'space-L2')!.usage, '主卧');
+  assert.deepEqual(result.mapping.DM1, ['space-L1'], '落在房间内的尺寸数字关联到该房间空间');
+  assert.deepEqual(result.mapping.DM2, [], '开放区外的尺寸数字仍保留但不关联房间');
 });
 
 test('定点补丁只修改指定对象，拒绝旧版本与跨图补丁', () => {
@@ -137,11 +153,11 @@ test('独立内环推导环绕区域时排除内室，空间不重叠', () => {
   assertUpwardBoundaries(result.model!);
 });
 
-test('穿过墙体接点的窗洞不能生成，保留定位问题', () => {
+test('穿过墙体接点的窗洞保留定位诊断，仍忠实生成', () => {
   const input = sketchFixture(); input.openings[1].position = 0.5;
   const result = compileSketch(input, sketchSource, 'rev-0001');
-  assert.deepEqual(result.mapping.N1, []);
-  assert.ok(result.issues.some((i) => i.id === 'junction-N1' && i.severity === 'error'));
+  assert.ok(result.issues.some((i) => i.id === 'junction-N1' && i.severity === 'review'));
+  assert.deepEqual(result.mapping.N1, ['N1']);
 });
 
 test('米制墙厚标注由程序直接采用，模型无需反算像素厚度', () => {

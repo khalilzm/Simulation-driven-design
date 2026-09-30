@@ -18,6 +18,8 @@ export interface ComponentType {
   category: ComponentCategory;
   label: string;
   defaults: ComponentDefaults;
+  /** 仅对 category==='wall' 有意义：structural 承重墙 / partition 隔墙。 */
+  role?: 'structural' | 'partition';
 }
 
 export const COMPONENT_CATALOG: ComponentType[] = [
@@ -26,12 +28,14 @@ export const COMPONENT_CATALOG: ComponentType[] = [
     category: 'wall',
     label: '内隔墙200',
     defaults: { thickness: 0.2, height: 3 },
+    role: 'partition',
   },
   {
     id: 'wall-shear-300',
     category: 'wall',
     label: '承重墙300',
     defaults: { thickness: 0.3, height: 3 },
+    role: 'structural',
   },
   {
     id: 'door-single-900',

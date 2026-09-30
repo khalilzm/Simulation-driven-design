@@ -1,6 +1,5 @@
 import type { CCViewerApp } from '@glodon/concetto-viewer';
 import { DoubleSide } from 'three';
-import { indexedMeshToEdgeLinePositions, MESH_EDGE_LINE_COLOR } from './meshEdgeLines';
 import type { PolygonFill } from './modelRender';
 import type { SpaceOverlayRegistry } from './spaceOverlay';
 
@@ -8,9 +7,6 @@ export interface FillMeshOptions {
   depthWrite?: boolean;
   /** 用光照物理材质 GMeshMaterial（立体感），否则用无光照的 GMeshBasicMaterial */
   physical?: boolean;
-  /** 3D：EdgesGeometry 轮廓线（替代后处理 edge detection） */
-  meshEdges?: boolean;
-  edgeColor?: number;
 }
 
 /** 通过 CCViewerApp.addMesh 挂载，以便注册 GPU snap / 旋转枢轴捕捉 */
@@ -42,15 +38,4 @@ export function addSpaceFillMesh(
     },
   });
   overlays.addMeshHandle(viewer, handle);
-
-  if (options.meshEdges) {
-    const positions = indexedMeshToEdgeLinePositions(fill.mesh);
-    if (positions.length) {
-      const lineHandle = viewer.addLines({
-        positions,
-        material: { color: options.edgeColor ?? MESH_EDGE_LINE_COLOR },
-      });
-      overlays.addMeshHandle(viewer, lineHandle);
-    }
-  }
 }
