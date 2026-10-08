@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { StreamEvent } from '@sdd/shared';
+import { type ResidentialBriefDocument, type StreamEvent } from '@sdd/shared';
 import { buildOutlineJson, buildSpacePrompt, buildValidationCorrectionMessage, type OutlineContext } from '../spacePrompt';
 import type { ProviderAdapter, TurnResult } from '../providers/types';
 import { extractDsmlWrite } from '../providers/dsmlSalvage';
@@ -15,10 +15,12 @@ import { buildIntentPrompt, buildIntentOnlyPrompt } from './spaceAgentPrompts';
 import { ensureAgentIntentFile, ensureAgentLayoutFile, intentRelativePath, layoutRelativePath } from './resolveAgentLayout';
 import { parseDesignIntent } from './intent';
 import { compileIntent, deriveOutline } from './layoutIntent';
+import { runResidentialTurn } from './runResidentialTurn';
 
 interface SpaceTurnInput {
   cwd: string; revisionId: string; message: string; outline: OutlineContext;
   nativeSessionId?: string; model?: string; requireDesign?: boolean;
+  residentialBrief?: ResidentialBriefDocument;
 }
 
 const LAYOUT_ATTEMPTS = 3;
@@ -57,6 +59,10 @@ function failNoDeliverable(
 export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapter,
   emit: (event: StreamEvent) => void, signal?: AbortSignal): Promise<TurnResult> {
   const { cwd, revisionId } = input;
+  if (input.residentialBrief) {
+    if (!input.outline.currentModel) throw new Error('住宅策略生成缺少固定底图');
+    return runResidentialTurn({ cwd, revisionId, model: input.model, residentialBrief: input.residentialBrief, base: input.outline.currentModel }, adapter, emit, signal);
+  }
   const folder = path.join(cwd, 'designs', revisionId);
   const layoutPath = path.join(folder, 'layout.json');
   const intentPath = path.join(folder, 'intent.json');
@@ -105,6 +111,7 @@ export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapt
           if (error) errors.push(error);
         }
         if (!errors.length) errors.push(...validateLayoutCompleteness(model, outline.requireFullCoverage));
+
       }
       if (errors.length) return false;
       fs.writeFileSync(`${modelPath}.tmp`, JSON.stringify(model, null, 2));

@@ -101,3 +101,18 @@ test('Cursor 初始化失败也返回阶段耗时', async (t) => {
   assert.ok(result.timings!.initializeMs! >= 0);
   assert.equal(result.timings!.runMs, undefined);
 });
+
+test('Cursor 流不再产生事件时取消仍能退出，不等待下一个流事件',async t=> {
+  const previousKey=process.env.CURSOR_API_KEY;process.env.CURSOR_API_KEY='test-only';
+  t.after(()=>{if(previousKey===undefined)delete process.env.CURSOR_API_KEY;else process.env.CURSOR_API_KEY=previousKey;});
+  let closed=false,cancelled=false;
+  const controller=new AbortController();
+  const fakeAgent={agentId:'cancel-test-agent',close(){closed=true;},async send(){return {
+    supports(){return true;},async cancel(){cancelled=true;},
+    async *stream(){controller.abort(new Error('用户取消'));await new Promise(()=>{});},
+    async wait(){return {status:'finished'};},
+  };},async [Symbol.asyncDispose](){}} as unknown as Awaited<ReturnType<typeof Agent.create>>;
+  t.mock.method(Agent,'create',async()=>fakeAgent);
+  const result=await cursorAdapter.run({cwd:'/tmp',message:'json',strategyOnly:true},()=>{},controller.signal);
+  assert.equal(result.failed,true);assert.equal(closed,true);assert.equal(cancelled,true);
+});

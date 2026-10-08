@@ -35,6 +35,8 @@ export interface AppConfig {
   sunlightUseRadiance: boolean;
   /** Radiance 可执行目录（rtrace/oconv）；子进程 PATH 前置 */
   sunlightRadianceBin: string;
+  /** 人流疏散 Python 解释器，默认 python3 */
+  pedestrianPython: string;
 }
 
 const bundledRadianceBin = path.join(
@@ -68,6 +70,15 @@ function resolveSunlightPython(): string {
   return 'python3';
 }
 
+const defaultPedestrianVenvPython = path.join(serverDir, 'python', 'pedestrian', '.venv', 'bin', 'python3');
+
+function resolvePedestrianPython(): string {
+  const fromEnv = process.env.SDD_PEDESTRIAN_PYTHON?.trim();
+  if (fromEnv) return fromEnv;
+  if (fs.existsSync(defaultPedestrianVenvPython)) return defaultPedestrianVenvPython;
+  return 'python3';
+}
+
 function resolveSunlightUseRadiance(radianceBin: string): boolean {
   const flag = process.env.SDD_SUNLIGHT_USE_RADIANCE?.trim();
   if (flag === '0') return false;
@@ -91,6 +102,7 @@ export const config: AppConfig = {
   sunlightPython: resolveSunlightPython(),
   sunlightRadianceBin,
   sunlightUseRadiance,
+  pedestrianPython: resolvePedestrianPython(),
 };
 
 /** Node 调用日照 Python 时的环境（Radiance PATH + recipe 开关） */
@@ -114,6 +126,10 @@ export const sunlightEngineId = sunlightUseRadiance
   : 'ladybug-lb-direct-sun-hours@3';
 
 export const sunlightRunnerScript = path.join(repoRoot, 'server', 'python', 'sunlight', 'sdd_run.py');
+
+export const pedestrianEngineId = 'jupedsim-egress@1';
+
+export const pedestrianRunnerScript = path.join(repoRoot, 'server', 'python', 'pedestrian', 'sdd_run.py');
 
 export const workspacesDir = process.env.WORKSPACES_DIR
   ? path.resolve(process.env.WORKSPACES_DIR)

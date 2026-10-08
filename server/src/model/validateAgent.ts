@@ -16,7 +16,7 @@ import { parseSpaceTypesField } from './parseSpaceTypes';
 import type { ValidationResult } from './validate';
 
 /** 校验 Agent 输出的 spaces 与 walls 是否在平面轮廓内 */
-export function validateAgentModel(input: unknown): ValidationResult {
+export function validateAgentModel(input: unknown, allowEmptySpaces = false): ValidationResult {
   if (!input || typeof input !== 'object') {
     return { valid: false, errors: ['模型必须是对象'] };
   }
@@ -56,7 +56,7 @@ export function validateAgentModel(input: unknown): ValidationResult {
 
   const spaces = (m.spaces as unknown[] | undefined) ?? [];
   const walls = (m.walls as unknown[] | undefined) ?? [];
-  if (spaces.length === 0) errors.push('至少需要一个 space');
+  if (spaces.length === 0 && !allowEmptySpaces) errors.push('至少需要一个 space');
   if (spaces.length > 0 && walls.length === 0) {
     errors.push('存在 spaces 时必须提供 walls（由 Agent 生成墙体中心线）');
   }

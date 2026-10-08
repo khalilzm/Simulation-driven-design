@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { SpaceModel, SunlightConfig, SunlightResult } from '@sdd/shared';
 import { resolveSpaceLabel } from '@sdd/shared';
 import {
@@ -104,10 +104,25 @@ export function SunlightPanel({
       setFormErrors(parsed.errors);
       return;
     }
-    const merged: SunlightConfig = config?.targets
-      ? { ...parsed.config, targets: config.targets }
-      : parsed.config;
-    void onSaveConfig(merged, { elevation: draft.floorElevation, height: draft.floorHeight }, rerun);
+    void onSaveConfig(parsed.config, { elevation: draft.floorElevation, height: draft.floorHeight }, rerun);
+  };
+
+  const targetGroups = useMemo(() => {
+    if (!model) return [];
+    const groups = new Map<string, { key: string; label: string }>();
+    for (const space of model.spaces) {
+      const key = space.allocationId ?? space.id;
+      if (!groups.has(key)) groups.set(key, { key, label: spaceLabel(model, space.id) });
+    }
+    return [...groups.values()];
+  }, [model]);
+
+  const targetHours = (key: string) => draft.targets.find((t) => t.spaceIds.includes(key))?.minHours ?? 0;
+  const patchTarget = (key: string, minHours: number) => {
+    setDraft((d) => ({
+      ...d,
+      targets: [...d.targets.filter((t) => !t.spaceIds.includes(key)), ...(minHours > 0 ? [{ spaceIds: [key], minHours }] : [])],
+    }));
   };
 
   const sensorCount = result?.status === 'completed' ? result.metrics.sensorCount : null;
@@ -296,6 +311,26 @@ export function SunlightPanel({
                   上次计算测点 <strong>{sensorCount}</strong> 个
                 </p>
               )}
+            </div>
+
+            <div className="sunlight-form-section">
+              <div className="sunlight-sampling-title">日照目标（达标线）</div>
+              {targetGroups.length === 0 && <p className="sunlight-hint">加载方案后可设置目标。</p>}
+              {targetGroups.map((g) => (
+                <label key={g.key} className="sunlight-field">
+                  <span>{g.label} · 达标 ≥（h）</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={0.5}
+                    value={targetHours(g.key) || ''}
+                    disabled={busy}
+                    placeholder="不设目标"
+                    onChange={(e) => patchTarget(g.key, Number(e.target.value))}
+                  />
+                </label>
+              ))}
+              <p className="sunlight-hint">填 0 或留空 = 不作为目标；"日照达标面积"只统计有目标的空间。</p>
             </div>
 
             {formErrors.length > 0 && (

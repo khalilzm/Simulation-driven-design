@@ -14,12 +14,13 @@ export function isSketchFilename(name: string): boolean {
   return SKETCH_EXT.test(name);
 }
 
-export function isBlockedUploadFilename(name: string): boolean {
+export function isDxfFilename(name: string): boolean {
   return /\.dxf$/i.test(name);
 }
 
 export function mimeForInputFile(name: string): string {
   const ext = path.extname(name).toLowerCase();
+  if (ext === '.dxf') return 'application/dxf';
   if (ext === '.png') return 'image/png';
   if (ext === '.jpg' || ext === '.jpeg') return 'image/jpeg';
   if (ext === '.webp') return 'image/webp';

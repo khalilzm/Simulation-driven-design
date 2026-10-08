@@ -1,4 +1,5 @@
 .sketch-review-panel { position: fixed; inset: 24px 24px 24px min(420px, 32vw); z-index: 30; background: #fff; color: #253142; border: 1px solid #dbe3eb; border-radius: 12px; box-shadow: 0 14px 60px #17263c35; display: flex; flex-direction: column; overflow: auto; }
+.sketch-review-panel.embedded { position: static; inset: auto; z-index: auto; flex: 1; min-height: 0; border: none; border-radius: 0; box-shadow: none; background: #fffdf8; }
 .sketch-review-panel header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid #e6ebf0; }
 .sketch-review-panel header span { display: block; font-size: 12px; color: #627184; margin-top: 5px; }
 .sketch-review-panel button { cursor: pointer; padding: 7px 11px; border: 1px solid #cad5df; border-radius: 6px; background: #f8fafc; color: #253142; }

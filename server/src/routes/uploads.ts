@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { Router } from 'express';
+import { Router, type Request, type Response } from 'express';
 import { workspacesDir } from '../config';
-import { isBlockedUploadFilename, isSketchFilename, mimeForInputFile } from '../design/inputHints';
+import { isDxfFilename, isSketchFilename, mimeForInputFile } from '../design/inputHints';
 import { saveSketch } from '../sketch/store';
+import { parseFixedEnvelopeDxf } from '../dxf/fixedEnvelope';
+import { loadDesign, saveDesign } from '../model/store';
 
 export const uploadsRouter = Router();
 
@@ -16,7 +18,7 @@ function safeName(name: string): string {
   return path.basename(name).replace(/[^\w.\-]+/g, '_');
 }
 
-uploadsRouter.post('/uploads', async (req, res) => {
+export async function handleUpload(req: Request, res: Response): Promise<void> {
   const body = (req.body ?? {}) as {
     sessionId?: unknown;
     filename?: unknown;
@@ -36,12 +38,8 @@ uploadsRouter.post('/uploads', async (req, res) => {
   const id = typeof sessionId === 'string' && sessionId ? sessionId : randomUUID();
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) { res.status(400).json({ error: 'invalid sessionId' }); return; }
   const name = safeName(filename);
-  if (isBlockedUploadFilename(name)) {
-    res.status(400).json({ error: '不支持 DXF；请用对话描述需求，或上传 PNG/JPEG/WebP 手绘草图（可选）' });
-    return;
-  }
-  if (!isSketchFilename(name)) {
-    res.status(400).json({ error: '仅支持 PNG、JPEG、WebP 手绘草图' });
+  if (!isSketchFilename(name) && !isDxfFilename(name)) {
+    res.status(400).json({ error: '支持住宅 DXF 底图，或 PNG、JPEG、WebP 草图' });
     return;
   }
   const dir = inputsDir(id);
@@ -56,12 +54,22 @@ uploadsRouter.post('/uploads', async (req, res) => {
   }
 
   try {
+    if (isDxfFilename(name)) {
+      const parsed = parseFixedEnvelopeDxf(content.toString('utf8'), filename);
+      const storedName = `dxf-${randomUUID()}.dxf`;
+      fs.writeFileSync(path.join(dir, storedName), content);
+      const { revisionId } = saveDesign(id, parsed);
+      res.json({ sessionId: id, file: { name: storedName, size: content.length }, revisionId, model: loadDesign(id, revisionId) });
+      return;
+    }
     const sketch = await saveSketch(path.join(workspacesDir, id), filename, content);
     res.json({ sessionId: id, file: { name: path.basename(sketch.imagePath), size: content.length }, sketch });
   } catch (error) {
-    res.status(400).json({ error: `无法读取图片：${error instanceof Error ? error.message : String(error)}` });
+    res.status(400).json({ error: `无法读取${isDxfFilename(name) ? ' DXF' : '图片'}：${error instanceof Error ? error.message : String(error)}` });
   }
-});
+}
+
+uploadsRouter.post('/uploads', handleUpload);
 
 uploadsRouter.get('/files/:sessionId/:name', (req, res) => {
   const { sessionId, name } = req.params;

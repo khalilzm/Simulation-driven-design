@@ -2,6 +2,7 @@ import {
   parseSunlightConfig,
   SUNLIGHT_CONFIG_SCHEMA_VERSION,
   type SunlightConfig,
+  type SunlightTarget,
 } from '@sdd/shared';
 
 /** 与 examples/scenarios/sunlight-rev-0001.json 一致 */
@@ -18,6 +19,7 @@ export const DEFAULT_SUNLIGHT_DRAFT: SunlightConfigDraft = {
   gridSpacing: 1.0,
   floorElevation: 0,
   floorHeight: 3,
+  targets: [],
 };
 
 export interface SunlightConfigDraft {
@@ -35,6 +37,8 @@ export interface SunlightConfigDraft {
   floorElevation: number;
   /** model.json floor.height（米，层高） */
   floorHeight: number;
+  /** 日照达标目标：每个目标一个逻辑功能（allocationId）与达标小时数 */
+  targets: SunlightTarget[];
 }
 
 export function configToDraft(config: SunlightConfig): Omit<SunlightConfigDraft, 'floorElevation' | 'floorHeight'> {
@@ -49,6 +53,7 @@ export function configToDraft(config: SunlightConfig): Omit<SunlightConfigDraft,
     timestepMinutes: config.timestepMinutes,
     referenceHeightAboveFloor: config.sensors.referenceHeightAboveFloor,
     gridSpacing: config.sensors.gridSpacing,
+    targets: config.targets ?? [],
   };
 }
 
@@ -76,6 +81,7 @@ export function draftToConfigPayload(draft: SunlightConfigDraft): unknown {
       referenceHeightAboveFloor: draft.referenceHeightAboveFloor,
       gridSpacing: draft.gridSpacing,
     },
+    targets: draft.targets.length ? draft.targets : undefined,
   };
 }
 

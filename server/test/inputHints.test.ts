@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { isBlockedUploadFilename, isSketchFilename, listSketchInputHints } from '../src/design/inputHints';
+import { isDxfFilename, isSketchFilename, listSketchInputHints } from '../src/design/inputHints';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-test('upload 拒绝 DXF，接受常见草图扩展名', () => {
-  assert.equal(isBlockedUploadFilename('plan.dxf'), true);
+test('upload 区分 DXF 与常见草图扩展名', () => {
+  assert.equal(isDxfFilename('plan.DXF'), true);
+  assert.equal(isDxfFilename('photo.png'), false);
   assert.equal(isSketchFilename('sketch.png'), true);
   assert.equal(isSketchFilename('photo.JPG'), true);
   assert.equal(isSketchFilename('plan.dxf'), false);

@@ -18,7 +18,7 @@ export function Chat({
   return (
     <div className="chat">
       {messages.length === 0 && (
-        <div className="empty">选择一个提供方并输入需求，开始空间设计对话。</div>
+        <div className="empty">在这里补充图纸信息或改造要求，助手的说明会保留在对话记录中。</div>
       )}
       {messages.map((m) => (
         <div key={m.id} className={`message ${m.role}`}>

@@ -11,13 +11,15 @@ import { loadOutlineContext, resolveFullCoverage } from '../design/outlineContex
 import { runSpaceTurn } from '../design/runSpaceTurn';
 import { loadSketch, resolveSketch } from '../sketch/store';
 import { readSketchReport, runSketchTurn } from '../sketch/runSketchTurn';
+import { prepareResidentialGeneration, residentialGenerationMessage } from '../design/residentialBrief';
 
 /** 对话和“生成方案”共享会话、轮廓准备及 Agent 执行。 */
 export async function handleSpaceTurn(req: Request, res: Response, generate = false): Promise<void> {
-  const { provider, sessionId, message, parentRevisionId, requireFullCoverage, mode, sketchId } = (req.body ?? {}) as {
+  const { provider, sessionId, message, parentRevisionId, requireFullCoverage, mode, sketchId, residentialBrief } = (req.body ?? {}) as {
     provider?: unknown; sessionId?: unknown; message?: unknown;
     parentRevisionId?: unknown; requireFullCoverage?: unknown;
     mode?: unknown; sketchId?: unknown;
+    residentialBrief?: unknown;
   };
   if (!isValidProvider(provider)) {
     res.status(400).json({ error: 'invalid provider' });
@@ -40,6 +42,14 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) { res.status(400).json({ error: 'invalid sessionId' }); return; }
   if (mode !== undefined && !['sketch', 'generate', 'edit'].includes(String(mode))) { res.status(400).json({ error: 'invalid mode' }); return; }
   if (sketchId !== undefined && typeof sketchId !== 'string') { res.status(400).json({ error: 'invalid sketchId' }); return; }
+  let residential: ReturnType<typeof prepareResidentialGeneration> | undefined;
+  if (residentialBrief !== undefined) {
+    try {
+      if (mode !== 'edit') throw new Error('节点图生成必须使用固定底图模式');
+      residential = prepareResidentialGeneration(id, residentialBrief);
+      if (parentRevisionId !== residential.model.model.revisionId) throw new Error('生成所用底图与节点图不一致');
+    } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); return; }
+  }
   const session = loadSession(id) ?? createSession(id, provider);
   if (session.provider !== provider) {
     res.status(409).json({ error: 'session provider mismatch' });
@@ -72,7 +82,7 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
     return;
   }
   const outline = mode === 'generate' ? { source: 'none' as const } : loadOutlineContext(cwd, parent);
-  const userMessage = typeof message === 'string' && message.trim() ? message
+  const userMessage = residential ? residentialGenerationMessage(residential.document) : typeof message === 'string' && message.trim() ? message
     : sketchMode ? '忠实还原当前草图中的墙体、门窗和原始功能标注；不重新设计。'
       : '根据对话描述生成一套可落地的户型分区（外轮廓 + 房间），面积与功能名称写在 assumptions/usage 里。';
   const previousCoverage = session.requireFullCoverage ?? session.messages
@@ -106,7 +116,8 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
         previous: previousSketch ?? undefined }, getAdapter(provider), emit, abort.signal)
       : await runSpaceTurn({
       cwd, revisionId, message: userMessage, outline,
-      nativeSessionId: mode === 'generate' ? undefined : session.nativeSessionId, model: config.model || undefined, requireDesign: true,
+      nativeSessionId: mode === 'generate' || residential ? undefined : session.nativeSessionId, model: config.model || undefined, requireDesign: true,
+      residentialBrief: residential?.document,
     }, getAdapter(provider), emit, abort.signal);
     if (!sketchMode && result.nativeSessionId) session.nativeSessionId = result.nativeSessionId;
     emit({ type: 'done', status: result.failed ? 'failed' : 'completed' });

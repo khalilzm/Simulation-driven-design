@@ -30,7 +30,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
 ];
 
-export type CapabilityId = 'sunlight' | 'thermal' | 'acoustics';
+export type CapabilityId = 'sunlight' | 'thermal' | 'acoustics' | 'pedestrian';
 
 export interface Capability {
   id: CapabilityId;
@@ -61,5 +61,12 @@ export const CAPABILITIES: Capability[] = [
     executor: null,
     input: '声源、接收点、频带、吸声散射属性',
     output: '脉冲响应、混响等',
+  },
+  {
+    id: 'pedestrian',
+    enabled: true,
+    executor: 'engine',
+    input: '几何、出口、人数、工况',
+    output: '轨迹、密度、疏散时间',
   },
 ];

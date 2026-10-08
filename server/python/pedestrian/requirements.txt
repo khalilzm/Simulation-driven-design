@@ -1,0 +1,3 @@
+jupedsim>=1.4.0
+pedpy>=1.5.0
+shapely>=2.0.0

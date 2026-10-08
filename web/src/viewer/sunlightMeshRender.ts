@@ -4,8 +4,7 @@ import { hoursToSunlightColor, resolveSunlightColorScale } from './sunlightColor
 import { meshFromPlanarFace } from './polygonMesh';
 
 /** Honeybee 传感器网格：每个三角面按 hours 着色 */
-export function sunlightGridsToFills(result: SunlightResult): PolygonFill[] {
-  const scale = resolveSunlightColorScale(result);
+export function sunlightGridsToFills(result: SunlightResult, scale = resolveSunlightColorScale(result)): PolygonFill[] {
   const fills: PolygonFill[] = [];
   for (const grid of result.grids ?? []) {
     for (let fi = 0; fi < grid.faces.length; fi++) {

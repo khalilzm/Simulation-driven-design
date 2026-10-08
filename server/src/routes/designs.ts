@@ -1,3 +1,6 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { workspacesDir } from '../config';
 import { Router } from 'express';
 import type { SpaceModel } from '@sdd/shared';
 import { handleSpaceTurn } from './spaceTurn';
@@ -8,12 +11,22 @@ import {
   listDesigns,
   loadDesign,
   saveDesign,
+  loadPedestrianConfig,
   loadSunlightConfig,
+  savePedestrianConfig,
   saveSunlightConfig,
   updateDesignFloor,
 } from '../model/store';
 
 export const designsRouter = Router();
+
+designsRouter.get('/designs/:sessionId/:revisionId/residential-solver', (req,res)=>{
+  const {sessionId,revisionId}=req.params;
+  if(!/^[A-Za-z0-9_-]{1,100}$/.test(sessionId)||!/^rev-\d+$/.test(revisionId)){res.status(400).json({error:'求解报告版本无效'});return;}
+  const file=path.join(workspacesDir,sessionId,'designs',revisionId,'solver-report.json');
+  if(!fs.existsSync(file)){res.status(404).json({error:'该版本没有住宅求解报告'});return;}
+  try {res.json(JSON.parse(fs.readFileSync(file,'utf8')));}catch {res.status(500).json({error:'求解报告无法读取'});}
+});
 
 designsRouter.post('/designs', (req, res) => {
   const body = (req.body ?? {}) as {
@@ -60,6 +73,30 @@ designsRouter.get('/designs/:sessionId/:revisionId/sunlight', (req, res) => {
 designsRouter.put('/designs/:sessionId/:revisionId/sunlight', (req, res) => {
   const { sessionId, revisionId } = req.params;
   const result = saveSunlightConfig(sessionId, revisionId, req.body);
+  if (!result.ok) {
+    res.status(400).json({ valid: false, errors: result.errors });
+    return;
+  }
+  res.json({ valid: true, errors: [] });
+});
+
+designsRouter.get('/designs/:sessionId/:revisionId/pedestrian', (req, res) => {
+  const { sessionId, revisionId } = req.params;
+  const loaded = loadPedestrianConfig(sessionId, revisionId);
+  if (loaded === null) {
+    res.status(404).json({ error: 'pedestrian.json 不存在' });
+    return;
+  }
+  if (!loaded.ok) {
+    res.status(400).json({ valid: false, errors: loaded.errors });
+    return;
+  }
+  res.json({ valid: true, config: loaded.config });
+});
+
+designsRouter.put('/designs/:sessionId/:revisionId/pedestrian', (req, res) => {
+  const { sessionId, revisionId } = req.params;
+  const result = savePedestrianConfig(sessionId, revisionId, req.body);
   if (!result.ok) {
     res.status(400).json({ valid: false, errors: result.errors });
     return;

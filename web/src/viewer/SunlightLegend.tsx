@@ -5,8 +5,9 @@ import {
   sunlightLegendTicks,
 } from './sunlightColor';
 
-export function SunlightLegend({ result }: { result: SunlightResult }) {
-  const scale = resolveSunlightColorScale(result);
+export function SunlightLegend({ result, scale = resolveSunlightColorScale(result) }: {
+  result: SunlightResult; scale?: ReturnType<typeof resolveSunlightColorScale>;
+}) {
   const ticks = sunlightLegendTicks(scale, 5);
   const targetHours = result.targets?.find((t) => t.met !== undefined)?.minHours ?? result.targets?.[0]?.minHours;
 

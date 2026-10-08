@@ -17,7 +17,7 @@ export function validateStoredDesign(raw: unknown): ValidationResult {
       }
       return { valid: true, errors: [] };
     }
-    const errors = [...new Set([...validateAgentModel(model).errors, ...validateModel(model).errors])];
+    const errors = [...new Set([...validateAgentModel(model, !!model.model.dxfSource).errors, ...validateModel(model).errors])];
     if (!errors.length) {
       const scale = model.model.units === 'mm' ? 1000 : 1;
       for (const space of model.spaces) if (outsideArea(space.boundary, model.floor.boundary) / scale ** 2 > 1e-6) {

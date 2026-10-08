@@ -1,6 +1,7 @@
 // 轻量空间模型 model.json 的类型契约（对齐 docs/architecture.md §6）
 
 import type { ComponentType } from './catalog';
+import type { DxfSource } from './dxf';
 
 export const MODEL_SCHEMA_VERSION = '1';
 
@@ -18,6 +19,10 @@ export interface ModelMeta {
   sketchId?: string;
   /** Prevent uncalibrated/unreviewed reconstructions from entering analysis. */
   sketchStatus?: 'accepted' | 'needs_review' | 'rejected';
+  /** Fixed-envelope DXF provenance; a shell can exist before rooms are generated. */
+  dxfSource?: DxfSource;
+  /** Immutable pre-generation demand snapshot associated with a generated candidate. */
+  residentialBrief?: { baseRevisionId: string; version: number; status: 'pending_simulation'; geometryStatus?: 'checked'; qualityStatus?: 'checked'; solver?: 'grid' | 'binary'; qualityChecksVersion?: number };
 }
 
 export interface Floor {
@@ -66,7 +71,7 @@ export interface Wall {
   /** 结构角色：structural 承重墙（默认不可移动）、partition 隔墙、curtain 幕墙、unknown 未知。 */
   role?: 'structural' | 'partition' | 'curtain' | 'unknown';
   /** v2 布局生成的构件；未标记的旧构件按既有建筑保留。 */
-  generatedBy?: 'layout-v2';
+  generatedBy?: 'layout-v2' | 'layout-grid-v1';
   /** 构件类型引用，如 wall-int-200 */
   analysisProperties?: Record<string, unknown>;
 }
@@ -80,7 +85,7 @@ export interface Opening {
   height: number;
   /** 洞口底部距楼面高度，使用 model.units；省略时为 0。 */
   sillHeight?: number;
-  generatedBy?: 'layout-v2';
+  generatedBy?: 'layout-v2' | 'layout-grid-v1';
   /** 填充构件引用（door/window id） */
   fillRef?: string;
 }

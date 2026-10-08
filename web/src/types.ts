@@ -1,6 +1,7 @@
-import type { SpaceModel, SunlightResult } from '@sdd/shared';
+import type { SpaceModel, SunlightResult, PedestrianResult } from '@sdd/shared';
+import type { SunlightColorScale } from './viewer/sunlightColor';
 
-export type ModelDisplayMode = 'usage' | 'sunlight';
+export type ModelDisplayMode = 'usage' | 'sunlight' | 'pedestrian';
 export type ModelViewMode = ModelDisplayMode | '3d';
 
 export interface ChatImageAttachment {
@@ -26,4 +27,5 @@ export type DxfEntity =
 export type ViewerContent =
   | { kind: 'empty' }
   | { kind: 'dxf'; entities: DxfEntity[] }
-  | { kind: 'model'; model: SpaceModel; view?: ModelViewMode; sunlight?: SunlightResult };
+  | { kind: 'model'; model: SpaceModel; view?: ModelViewMode; sunlight?: SunlightResult; pedestrian?: PedestrianResult;
+      comparison?: { sunlightScale: SunlightColorScale; densityScale: SunlightColorScale; pedestrianTimeMax: number } };

@@ -25,6 +25,7 @@ export function runCliProcess(
     let nativeSessionId: string | undefined;
     let hadError = false;
     let lastActivity = Date.now();
+    let forceKill: ReturnType<typeof setTimeout> | undefined;
     emit({ type: 'progress', message: '正在启动 Agent…' });
     const heartbeat = setInterval(() => {
       if (Date.now() - lastActivity < HEARTBEAT_MS) return;
@@ -33,6 +34,10 @@ export function runCliProcess(
 
     const kill = () => {
       if (child.exitCode === null && !child.killed) child.kill('SIGTERM');
+      if (!forceKill) forceKill = setTimeout(() => {
+        if (child.exitCode === null) child.kill('SIGKILL');
+      }, 3000);
+      forceKill.unref();
     };
     if (signal) {
       if (signal.aborted) kill();
@@ -48,6 +53,7 @@ export function runCliProcess(
     let buf = '';
     child.stdout.setEncoding('utf8');
     child.stdout.on('data', (chunk: string) => {
+      input.onActivity?.();
       buf += chunk;
       let idx: number;
       while ((idx = buf.indexOf('\n')) >= 0) {
@@ -71,12 +77,14 @@ export function runCliProcess(
     });
 
     child.on('error', (err) => {
+      clearTimeout(forceKill);
       clearInterval(heartbeat);
       signal?.removeEventListener('abort', kill);
       reject(err);
     });
 
     child.on('close', (code) => {
+      clearTimeout(forceKill);
       clearInterval(heartbeat);
       signal?.removeEventListener('abort', kill);
       const failed = hadError || code !== 0;

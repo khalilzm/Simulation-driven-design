@@ -18,6 +18,9 @@ export interface ChatTurnInput {
   images?: { path: string; mimeType: 'image/png'; width: number; height: number }[];
   /** Initial extraction already has the image and full schema; only write its deliverable. */
   imagePhase?: 'extract' | 'patch';
+  /** Strategy output uses text JSON only; no filesystem or other tools. */
+  strategyOnly?: boolean;
+  onActivity?: () => void;
 }
 
 export interface ParsedLine {

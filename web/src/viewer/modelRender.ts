@@ -12,6 +12,7 @@ import {
 } from '@sdd/shared';
 import { hoursToSunlightColor, resolveSunlightColorScale } from './sunlightColor';
 import { extrudePolygonPrism, triangulatePolygonEarcut, type IndexedPolygonMesh } from './polygonMesh';
+import { FIXED_ENVELOPE_COLORS } from './fixedEnvelopePresentation';
 
 /** 平面墙体填充（#8e8e8e） */
 const WALL_FILL_COLOR_2D = 0x8e8e8e;
@@ -138,7 +139,7 @@ export function modelToWallFills(model: SpaceModel): PolygonFill[] {
       const outline = wallStripPolygon(line, w.thickness, startTrim, endTrim);
       if (!outline || outline.length < 3) return;
       const mesh = triangulatePolygonEarcut(closeRing(outline), 0.045 + i * 0.00001);
-      if (mesh) fills.push({ mesh, color: WALL_FILL_COLOR_2D, opacity: 1 });
+      if (mesh) fills.push({ mesh, color: model.model.dxfSource && w.fixed ? FIXED_ENVELOPE_COLORS.wall : WALL_FILL_COLOR_2D, opacity: 1 });
     });
   });
   return fills;
@@ -378,7 +379,7 @@ export function modelToWindowFills(model: SpaceModel): PolygonFill[] {
       [mx - ux * halfW - vx * halfT, my - uy * halfW - vy * halfT],
     ];
     const mesh = triangulatePolygonEarcut(closeRing(corners), 0.05 + i * 0.00001);
-    if (mesh) fills.push({ mesh, color: 0xffffff, opacity: 1 });
+    if (mesh) fills.push({ mesh, color: model.model.dxfSource ? FIXED_ENVELOPE_COLORS.windowFill : 0xffffff, opacity: 1 });
   });
   return fills;
 }
@@ -392,7 +393,7 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
     return positions;
   };
 
-  const floor = add(0x9a8f7d);
+  const floor = add(model.model.dxfSource ? FIXED_ENVELOPE_COLORS.outline : 0x9a8f7d);
   pushPolygon(floor, model.floor.boundary);
 
   for (let i = 0; i < model.spaces.length; i++) {
@@ -404,7 +405,8 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
     pushPolygon(border, s.boundary);
   }
 
-  const openings = add(0x1f7a8c);
+  const windowLines = add(model.model.dxfSource ? FIXED_ENVELOPE_COLORS.window : 0x1f7a8c);
+  const doorLines = model.model.dxfSource ? add(FIXED_ENVELOPE_COLORS.entrance) : windowLines;
   for (const o of model.openings) {
     const wall = model.walls.find((w) => w.id === o.hostWallId);
     if (!wall || wall.geometry.points.length < 2) continue;
@@ -427,6 +429,7 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
       acc += segLen;
     }
     const isWindow = model.windows.some((w) => w.openingId === o.id);
+    const openings = isWindow ? windowLines : doorLines;
     if (isWindow) {
       // 窗框矩形由 modelToWindowFills 白色填充渲染；中心线抬高到填充之上（z=0.06 > 0.05）
       pushSeg(openings, [mx - ux * o.width / 2, my - uy * o.width / 2], [mx + ux * o.width / 2, my + uy * o.width / 2], 0.06);
@@ -468,5 +471,8 @@ export function modelToLineGroups(model: SpaceModel): LineGroup[] {
     }
   }
 
+  if (model.model.dxfSource) {
+    for (const group of groups) for (let i = 2; i < group.positions.length; i += 3) group.positions[i] = 0.07;
+  }
   return groups;
 }

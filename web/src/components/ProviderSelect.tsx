@@ -11,10 +11,12 @@ export function ProviderSelect({
   value,
   options,
   onChange,
+  disabled = false,
 }: {
   value: ProviderId;
   options: ProviderOption[];
   onChange: (p: ProviderId) => void;
+  disabled?: boolean;
 }) {
   const current = options.find((o) => o.id === value);
   return (
@@ -23,6 +25,7 @@ export function ProviderSelect({
       <select
         id="provider"
         value={value}
+        disabled={disabled}
         onChange={(e) => onChange(e.target.value as ProviderId)}
       >
         {options.map((o) => (

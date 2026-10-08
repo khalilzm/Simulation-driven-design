@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { execSimulation } from '../simulation/process';
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -12,8 +12,10 @@ export interface SunlightRunInput {
   revisionId: string;
   model: SpaceModel;
   configRaw: unknown;
-  modelPath: string;
-  configPath: string;
+  /** Legacy call compatibility; the engine always reads the task's frozen inputs. */
+  modelPath?: string;
+  configPath?: string;
+  signal?: AbortSignal;
 }
 
 export interface SunlightRunOutput {
@@ -47,15 +49,15 @@ export async function runSunlightAnalysis(input: SunlightRunInput): Promise<Sunl
   const args = [
     path.resolve(sunlightRunnerScript),
     '--model',
-    path.resolve(input.modelPath),
+    path.join(simDir, 'model.frozen.json'),
     '--config',
-    path.resolve(input.configPath),
+    path.join(simDir, 'sunlight.frozen.json'),
     '--output',
     simDir,
   ];
   const env = sunlightProcessEnv();
   env.PYTHONPATH = [scriptDir, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
-  const { stdout, stderr, exitCode } = await execPython(config.sunlightPython, args, scriptDir, env);
+  const { stdout, stderr, exitCode } = await execSimulation(config.sunlightPython, args, scriptDir, env, input.signal);
   const resultPath = path.join(simDir, 'result.json');
 
   if (!fs.existsSync(resultPath)) {
@@ -102,35 +104,6 @@ export async function runSunlightAnalysis(input: SunlightRunInput): Promise<Sunl
 
   return { taskId, inputHash, result, simulationDir: simDir };
 }
-
-function execPython(
-  python: string,
-  args: string[],
-  cwd?: string,
-  env?: NodeJS.ProcessEnv,
-): Promise<{ stdout: string; stderr: string; exitCode: number | null }> {
-  return new Promise((resolve, reject) => {
-    const child = spawn(python, args, {
-      shell: false,
-      stdio: ['ignore', 'pipe', 'pipe'],
-      cwd,
-      env,
-    });
-    let stdout = '';
-    let stderr = '';
-    child.stdout.setEncoding('utf8');
-    child.stderr.setEncoding('utf8');
-    child.stdout.on('data', (c) => {
-      stdout += c;
-    });
-    child.stderr.on('data', (c) => {
-      stderr += c;
-    });
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ stdout, stderr, exitCode: code }));
-  });
-}
-
 export async function checkSunlightPython(): Promise<{ ok: boolean; detail?: unknown; error?: string }> {
   if (!fs.existsSync(sunlightRunnerScript)) {
     return { ok: false, error: `缺少脚本 ${sunlightRunnerScript}` };
@@ -139,7 +112,7 @@ export async function checkSunlightPython(): Promise<{ ok: boolean; detail?: unk
     const scriptDir = path.dirname(sunlightRunnerScript);
     const env = sunlightProcessEnv();
     env.PYTHONPATH = [scriptDir, env.PYTHONPATH].filter(Boolean).join(path.delimiter);
-    const { stdout, stderr, exitCode } = await execPython(
+    const { stdout, stderr, exitCode } = await execSimulation(
       config.sunlightPython,
       [path.resolve(sunlightRunnerScript), '--check'],
       scriptDir,

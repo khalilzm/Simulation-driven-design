@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import type { SpaceModel, SunlightConfig } from '@sdd/shared';
+import type { PedestrianConfig, SpaceModel, SunlightConfig } from '@sdd/shared';
 import { SKETCH_HUMAN_REVIEW_ENABLED } from '@sdd/shared';
-import { parseSunlightConfig } from '@sdd/shared';
+import { parsePedestrianConfig, parseSunlightConfig } from '@sdd/shared';
 import { workspacesDir } from '../config';
 import { validateStoredDesign } from './designValidity';
 
@@ -183,6 +183,40 @@ export function saveSunlightConfig(
     return { ok: false, errors: [`方案不存在: ${revisionId}`] };
   }
   const file = path.join(dir, 'sunlight.json');
+  const tmp = `${file}.tmp`;
+  fs.writeFileSync(tmp, `${JSON.stringify(parsed.config, null, 2)}\n`);
+  fs.renameSync(tmp, file);
+  return { ok: true };
+}
+
+export function loadPedestrianConfig(
+  sessionId: string,
+  revisionId: string,
+): { ok: true; config: PedestrianConfig } | { ok: false; errors: string[] } | null {
+  const file = path.join(designsDir(sessionId), revisionId, 'pedestrian.json');
+  if (!fs.existsSync(file)) return null;
+  try {
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const parsed = parsePedestrianConfig(raw);
+    if (!parsed.ok) return { ok: false, errors: parsed.errors };
+    return { ok: true, config: parsed.config };
+  } catch {
+    return { ok: false, errors: ['pedestrian.json 无法解析'] };
+  }
+}
+
+export function savePedestrianConfig(
+  sessionId: string,
+  revisionId: string,
+  raw: unknown,
+): { ok: true } | { ok: false; errors: string[] } {
+  const parsed = parsePedestrianConfig(raw);
+  if (!parsed.ok) return { ok: false, errors: parsed.errors };
+  const dir = path.join(designsDir(sessionId), revisionId);
+  if (!fs.existsSync(path.join(dir, 'model.json'))) {
+    return { ok: false, errors: [`方案不存在: ${revisionId}`] };
+  }
+  const file = path.join(dir, 'pedestrian.json');
   const tmp = `${file}.tmp`;
   fs.writeFileSync(tmp, `${JSON.stringify(parsed.config, null, 2)}\n`);
   fs.renameSync(tmp, file);

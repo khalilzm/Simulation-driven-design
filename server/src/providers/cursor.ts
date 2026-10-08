@@ -25,11 +25,12 @@ export function buildCursorAgentOptions(
   cwd: string,
   apiKey?: string,
   imagePhase?: ChatTurnInput['imagePhase'],
+  strategyOnly = false,
 ): AgentOptions {
   const options: AgentOptions = {
     model: { id: modelId },
     local: { cwd, settingSources: [] },
-    tools: imagePhase === 'extract' ? ['edit'] : SPACE_DESIGN_ALLOWED_TOOLS,
+    tools: strategyOnly ? [] : imagePhase === 'extract' ? ['edit'] : SPACE_DESIGN_ALLOWED_TOOLS,
   };
   if (apiKey) options.apiKey = apiKey;
   return options;
@@ -95,7 +96,7 @@ export const cursorAdapter: ProviderAdapter = {
     try {
       await measure('authMs', () => ensureCursorAuth(emit));
 
-      const baseOptions = buildCursorAgentOptions(modelId, input.cwd, explicitCursorApiKey(), input.imagePhase);
+      const baseOptions = buildCursorAgentOptions(modelId, input.cwd, explicitCursorApiKey(), input.imagePhase, input.strategyOnly);
 
       agent = await measure('initializeMs', () => input.nativeSessionId
         ? Agent.resume(input.nativeSessionId, baseOptions)
@@ -104,6 +105,7 @@ export const cursorAdapter: ProviderAdapter = {
       nativeSessionId = agent.agentId;
 
       heartbeat = setInterval(() => {
+        if (signal?.aborted) return;
         if (Date.now() - lastActivity < HEARTBEAT_MS) return;
         emit({ type: 'progress', message: '模型推理中，请稍候…' });
       }, HEARTBEAT_MS);
@@ -115,10 +117,14 @@ export const cursorAdapter: ProviderAdapter = {
       const run = await measure('sendMs', () => activeAgent.send(images.length ? { text: prompt, images } : prompt));
       let lastToolCompleted: number | undefined;
       let aborting = false;
+      let cancelled!: () => void;
+      const cancellation = new Promise<null>((resolve) => { cancelled = () => resolve(null); });
 
       const onAbort = () => {
         aborting = true;
-        if (run.supports('cancel')) void run.cancel();
+        cancelled();
+        if (run.supports('cancel')) void run.cancel().catch(() => {});
+        activeAgent.close();
       };
       if (signal) {
         if (signal.aborted) onAbort();
@@ -127,7 +133,9 @@ export const cursorAdapter: ProviderAdapter = {
 
       try {
         await measure('runMs', async () => {
-          for await (const event of run.stream()) {
+          const consume = async () => { for await (const event of run.stream()) {
+            if (aborting) break;
+            input.onActivity?.();
             lastActivity = Date.now();
             if (timings.firstContentMs === undefined && (event.type === 'assistant' || event.type === 'thinking' || event.type === 'tool_call')) {
               timings.firstContentMs = Math.round((performance.now() - sendStarted) * 1000) / 1000;
@@ -135,9 +143,12 @@ export const cursorAdapter: ProviderAdapter = {
             if (event.type === 'tool_call' && event.status === 'completed') lastToolCompleted = performance.now();
             mapStreamEvent(event, emit);
             if (aborting) break;
-          }
+          } };
+          await Promise.race([consume(), cancellation]);
+          if (aborting) { failed = true; return; }
 
-          const result = await run.wait();
+          const result = await Promise.race([run.wait(), cancellation]);
+          if (!result) { failed = true; return; }
           if (lastToolCompleted !== undefined) timings.afterLastToolMs = Math.round((performance.now() - lastToolCompleted) * 1000) / 1000;
           if (result.status === 'error') {
             emit(evError(result.error?.message || 'Cursor Agent 返回错误'));
@@ -162,7 +173,12 @@ export const cursorAdapter: ProviderAdapter = {
       if (heartbeat) clearInterval(heartbeat);
       if (agent) {
         const activeAgent = agent;
-        try { await measure('disposeMs', () => disposeAgent(activeAgent)); }
+        try { await measure('disposeMs', async () => {
+          if (!signal?.aborted) return disposeAgent(activeAgent);
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          try { await Promise.race([disposeAgent(activeAgent), new Promise<void>(resolve => { timer=setTimeout(resolve,3000); })]); }
+          finally { clearTimeout(timer); }
+        }); }
         catch (error) { emit(evError(error instanceof Error ? error.message : String(error))); failed = true; }
       }
       timings.totalMs = Math.round((performance.now() - started) * 1000) / 1000;

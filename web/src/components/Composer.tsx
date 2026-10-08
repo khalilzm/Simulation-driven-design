@@ -3,9 +3,11 @@ import { useState } from 'react';
 export function Composer({
   disabled,
   onSend,
+  placeholder = '向设计助手补充本轮要求…',
 }: {
   disabled: boolean;
   onSend: (message: string) => void;
+  placeholder?: string;
 }) {
   const [text, setText] = useState('');
 
@@ -21,7 +23,7 @@ export function Composer({
       <textarea
         value={text}
         disabled={disabled}
-        placeholder="描述户型需求，例如：两室一厅约 90㎡，客厅朝南…"
+        placeholder={placeholder}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && !e.shiftKey) {

@@ -8,3 +8,5 @@ dist/
 *.tsbuildinfo
 server/python/sunlight/.venv/
 server/python/sunlight/vendor/
+server/python/pedestrian/.venv/
+__pycache__/

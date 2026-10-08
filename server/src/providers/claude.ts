@@ -12,7 +12,7 @@ export function buildCommand(input: ChatTurnInput): CommandSpec {
     '--verbose',
     '--bare',
     '--tools',
-    input.imagePhase === 'extract' ? 'Write' : 'Read,Write',
+    input.strategyOnly ? '' : input.imagePhase === 'extract' ? 'Write' : 'Read,Write',
     '--disable-slash-commands',
     '--effort',
     'low',
