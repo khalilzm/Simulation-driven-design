@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import os from 'node:os';
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 const serverDir = path.resolve(moduleDir, '..');
@@ -26,6 +27,8 @@ export interface AppConfig {
   port: number;
   host: string;
   claudePath: string;
+  codexPath: string;
+  codexModel: string;
   model: string;
   cursorApiKey: string;
   cursorModel: string;
@@ -92,10 +95,24 @@ export { repoRoot };
 const sunlightRadianceBin = resolveSunlightRadianceBin();
 const sunlightUseRadiance = resolveSunlightUseRadiance(sunlightRadianceBin);
 
+/** Prefer the desktop app's runtime, with the standalone CLI as a portable fallback. */
+export function resolveCodexPath(): string {
+  if(process.env.CODEX_PATH?.trim())return process.env.CODEX_PATH.trim();
+  if(process.platform==='darwin')for(const root of ['/Applications',path.join(os.homedir(),'Applications')]) {
+    for(const name of ['ChatGPT.app','Codex.app']) {
+      const file=path.join(root,name,'Contents','Resources','codex-cli','CodexCLI.app','Contents','MacOS','codex');
+      try {if(fs.statSync(file).isFile()){fs.accessSync(file,fs.constants.X_OK);return file;}}catch{}
+    }
+  }
+  return 'codex';
+}
+
 export const config: AppConfig = {
   port: Number(process.env.PORT ?? 4317),
   host: process.env.HOST ?? '127.0.0.1',
   claudePath: process.env.CLAUDE_PATH ?? 'claude',
+  codexPath: resolveCodexPath(),
+  codexModel: process.env.CODEX_MODEL?.trim()??'',
   model: process.env.MODEL ?? '',
   cursorApiKey: process.env.CURSOR_API_KEY ?? '',
   cursorModel: process.env.CURSOR_MODEL ?? 'composer-2.5',
@@ -122,8 +139,8 @@ export function sunlightProcessEnv(): NodeJS.ProcessEnv {
 }
 
 export const sunlightEngineId = sunlightUseRadiance
-  ? 'lbt-direct-sun-hours@2'
-  : 'ladybug-lb-direct-sun-hours@3';
+  ? 'lbt-direct-sun-hours@4'
+  : 'ladybug-lb-direct-sun-hours@5';
 
 export const sunlightRunnerScript = path.join(repoRoot, 'server', 'python', 'sunlight', 'sdd_run.py');
 

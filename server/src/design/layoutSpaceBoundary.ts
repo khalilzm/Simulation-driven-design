@@ -1,7 +1,7 @@
 import { pointInOrOnPolygon, polygonGeometryError } from '@sdd/shared';
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon, polygonArea } from '../model/geometry';
-import { cleanRing, geometryArea, intersection, outsideArea, polygons } from './regionGeometry';
+import { closePolygon, polygonArea } from '../geometry/polygon';
+import { cleanRing, geometryArea, intersection, outsideArea, polygons } from '../geometry/regions';
 
 const OUTSIDE_EPS_M2 = 1e-6;
 

@@ -1,4 +1,6 @@
+import type { ResultIdentity } from './resultIdentity';
 import type { ProviderId } from './contracts';
+import type { AnalysisPlan } from './analysisPlan';
 import type { DesignPatch } from './designPatch';
 import type { PedestrianConfig, PedestrianResult } from './pedestrian';
 import type { SunlightAllocationMetrics, SunlightConfig, SunlightResult, SunlightSpaceMetrics } from './sunlight';
@@ -32,6 +34,7 @@ export const AUTOMATIC_OPTIMIZATION = {
 } as const;
 
 export interface OptimizationEvaluation {
+  identity?: ResultIdentity;
   scenarioHash: string;
   sunlight: {
     taskId: string;
@@ -126,6 +129,8 @@ export interface OptimizationRun {
   request: OptimizationRequest;
   policy: typeof OPTIMIZATION_POLICY;
   configs: { sunlight: SunlightConfig; pedestrian: PedestrianConfig };
+  /** Absent in historical runs; their existing comparison policy supplies its default plan. */
+  analysisPlan?: AnalysisPlan;
   automatic?: { selection: 'narrowest-feasible'; createdConfigs: ('sunlight' | 'pedestrian')[] };
   baseline?: OptimizationEvaluation;
   summary?: string;
@@ -171,6 +176,7 @@ export interface WorkbenchAnalysisRequest extends AutomaticOptimizationRequest {
 export interface WorkbenchOptimizationRequest extends OptimizationRequest, WorkbenchAnalysisRequest {}
 
 export interface WorkbenchAnalysis {
+  identity?: ResultIdentity;
   id: string;
   sessionId: string;
   revisionId: string;
@@ -178,6 +184,7 @@ export interface WorkbenchAnalysis {
   scenarioHash: string;
   createdAt: string;
   configs: OptimizationRun['configs'];
+  analysisPlan?: AnalysisPlan;
   evaluation: OptimizationEvaluation;
   view: OptimizationAnalysisView;
 }

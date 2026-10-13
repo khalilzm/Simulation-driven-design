@@ -14,7 +14,6 @@ function designPaths(sessionId: string, revisionId: string) {
   const base = path.join(workspacesDir, sessionId, 'designs', revisionId);
   return {
     base,
-    modelPath: path.join(base, 'model.json'),
     configPath: path.join(base, 'sunlight.json'),
   };
 }
@@ -57,7 +56,7 @@ sunlightRouter.post('/sunlight/run', async (req, res) => {
   const reconstructionWarnings = readSketchReport(path.join(workspacesDir, sessionId), revisionId)
     ?.issues.filter((i) => i.severity === 'review').map((i) => i.message) ?? [];
 
-  const { modelPath, configPath } = designPaths(sessionId, revisionId);
+  const { configPath } = designPaths(sessionId, revisionId);
   const provision = ensureSunlightConfig(configPath);
   if (provision.errors?.length) {
     res.status(500).json({ error: provision.errors.join('；') });
@@ -83,8 +82,6 @@ sunlightRouter.post('/sunlight/run', async (req, res) => {
       revisionId,
       model,
       configRaw,
-      modelPath,
-      configPath,
     });
     res.json({
       taskId: out.taskId,

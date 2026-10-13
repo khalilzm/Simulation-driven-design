@@ -4,14 +4,14 @@ import {
   validateSpaceUsage,
 } from '@sdd/shared';
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from './geometry';
+import { closePolygon } from '../geometry/polygon';
 import {
   findPolygonEdgeOutside,
   pointInPolygonOrOnEdge,
   polygonContainedInPolygon,
   polygonEdgesContainedInPolygon,
   polygonsHaveAreaOverlap,
-} from './geometry';
+} from '../geometry/polygon';
 import { parseSpaceTypesField } from './parseSpaceTypes';
 import type { ValidationResult } from './validate';
 

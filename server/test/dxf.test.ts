@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { extractDxfOutline } from '../src/dxf/outline';
-import { normalizePolygon } from '../src/model/geometry';
+import { normalizePolygon } from '../src/geometry/polygon';
 import { buildOutlineJson } from '../src/spacePrompt';
 import type { Vec2 } from '@sdd/shared';
 

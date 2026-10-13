@@ -13,6 +13,7 @@ import { sketchesRouter } from './routes/sketches';
 import { optimizationsRouter } from './routes/optimizations';
 import { serveWeb } from './static';
 import { residentialBriefsRouter } from './routes/residentialBriefs';
+import { canvasRouter } from './routes/canvas';
 
 const app = express();
 app.use(express.json({ limit: '20mb' }));
@@ -20,6 +21,7 @@ app.use(express.json({ limit: '20mb' }));
 app.use('/api', statusRouter);
 app.use('/api', chatRouter);
 app.use('/api', sessionsRouter);
+app.use('/api', canvasRouter);
 app.use('/api', uploadsRouter);
 app.use('/api', residentialBriefsRouter);
 app.use('/api', designsRouter);

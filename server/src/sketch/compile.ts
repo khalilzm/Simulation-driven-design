@@ -1,6 +1,6 @@
 import { diff } from 'martinez-polygon-clipping';
 import { pointInOrOnPolygon, polygonGeometryError, type SketchCompilation, type SketchExtraction, type SketchSource, type SpaceModel, type Vec2 } from '@sdd/shared';
-import { cleanRing, decomposeRegions, polygons } from '../design/regionGeometry';
+import { cleanRing, decomposeRegions, polygons } from '../geometry/regions';
 import { along, buildSketchTopology, distance, length, signedArea } from './topology';
 
 const COLORS = ['#A8C8F0', '#98D4B8', '#FFE4A8', '#C8B8E8', '#FFB878', '#88C8E8'];

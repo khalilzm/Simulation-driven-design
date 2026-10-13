@@ -3,7 +3,7 @@ import { SKETCH_HUMAN_REVIEW_ENABLED } from '@sdd/shared';
 import { normalizeAgentGeometry } from './normalizeAgent';
 import { validateAgentModel } from './validateAgent';
 import { validateModel, type ValidationResult } from './validate';
-import { outsideArea } from '../design/regionGeometry';
+import { outsideArea } from '../geometry/regions';
 
 /** 旧版本也需要检查，不能因为文件存在就把越界草稿当作可继承方案。 */
 export function validateStoredDesign(raw: unknown): ValidationResult {

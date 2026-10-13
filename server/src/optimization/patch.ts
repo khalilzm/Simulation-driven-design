@@ -1,9 +1,9 @@
 import { buildEffectiveCatalog, TYPE_ID_KEY, type DesignPatch, type OffsetPartitionPatch, type OptimizationEvaluation, type OptimizationRequest, type SpaceModel, type SwapProgramPatch, type Vec2 } from '@sdd/shared';
-import { buildSpatialGraph } from '../design/spatialGraph';
+import { buildSpatialGraph } from '../geometry/spatialGraph';
 import { validateModel } from '../model/validate';
 import { validateAgentModel } from '../model/validateAgent';
 import { segmentCoveredBy } from '../design/layoutWalls';
-import { closePolygon } from '../model/geometry';
+import { closePolygon } from '../geometry/polygon';
 
 export function validateOptimizationModel(model: SpaceModel): void {
   const errors = [...validateModel(model).errors, ...validateAgentModel(model).errors];

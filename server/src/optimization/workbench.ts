@@ -11,6 +11,9 @@ import { parseAutomaticOptimizationRequest } from './automatic';
 import { loadAnalysis } from './comparison';
 import { loadOptimizationBaseline, parseOptimizationRequest, prepareOptimization } from './run';
 import { evaluateModel, type EvaluateModel } from './simulate';
+import { optimizationAnalysisPlan } from './analysisPlan';
+import { optimizationResultIdentity, optimizationEvidenceMatchesIdentity } from './resultIdentity';
+import { sameCachedResult } from '../analysis/runtime/identity';
 import { hashValue, validRevisionId, validSessionId, writeJson } from './store';
 
 function designDir(sessionId: string, revisionId: string) {
@@ -75,6 +78,7 @@ export function prepareWorkbenchOptimization(raw: unknown) {
   saveConfigs(conditions);
   const analysis = latestWorkbenchAnalysis(conditions.sessionId, conditions.revisionId);
   const baseline = analysis?.modelHash === prepared.run.baseModelHash && analysis.scenarioHash === prepared.run.scenarioHash
+    && sameCachedResult(analysis.identity, optimizationResultIdentity(prepared.model, prepared.run))
     ? analysis.evaluation : undefined;
   return { ...prepared, baseline };
 }
@@ -92,12 +96,14 @@ export async function analyzeWorkbench(request: WorkbenchAnalysisRequest, signal
   }
   signal.throwIfAborted();
   saveConfigs(request);
-  const context = { sessionId: request.sessionId, baseRevisionId: request.revisionId, scenarioHash, configs: request.configs };
-  const evaluation = await evaluate(model, context, signal, () => {});
+  const analysisPlan = optimizationAnalysisPlan(request.configs);
+  const context = { sessionId: request.sessionId, baseRevisionId: request.revisionId, scenarioHash, configs: request.configs, analysisPlan };
+  const identity = optimizationResultIdentity(model, context);
+  const evaluation = { ...await evaluate(model, context, signal, () => {}), identity };
   signal.throwIfAborted();
   const view = loadAnalysis(context, evaluation, model);
   const record: SavedAnalysis = { id: randomUUID(), sessionId: request.sessionId, revisionId: request.revisionId,
-    modelHash: hashValue(model), scenarioHash, createdAt: new Date().toISOString(), configs: request.configs, evaluation, engines: engines() };
+    modelHash: hashValue(model), scenarioHash, createdAt: new Date().toISOString(), configs: request.configs, analysisPlan, identity, evaluation, engines: engines() };
   const dir = path.join(workspacesDir, request.sessionId, 'analyses', record.id);
   writeJson(path.join(dir, 'model.json'), model);
   writeJson(path.join(dir, 'analysis.json'), record);
@@ -121,6 +127,13 @@ export function latestWorkbenchAnalysis(sessionId: string, revisionId: string): 
       const model = JSON.parse(fs.readFileSync(path.join(dir, record.id, 'model.json'), 'utf8'));
       if (hashValue(model) !== record.modelHash) continue;
       const context = { ...record, baseRevisionId: revisionId };
+      const currentModel = loadDesign(sessionId, revisionId);
+      if (!currentModel) continue;
+      const currentConfigs = readOptimizationSetup(sessionId, revisionId).configs;
+      const expectedIdentity = optimizationResultIdentity(currentModel, { ...context, configs: currentConfigs,
+        analysisPlan: optimizationAnalysisPlan(currentConfigs) });
+      if (!sameCachedResult(record.identity, expectedIdentity) || !sameCachedResult(record.evaluation.identity, expectedIdentity)
+        || !optimizationEvidenceMatchesIdentity(record.evaluation)) continue;
       return { ...record, view: loadAnalysis(context, record.evaluation, model) };
     } catch { /* Incomplete or changed artifacts cannot be reused. */ }
   }

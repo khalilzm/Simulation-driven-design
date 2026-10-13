@@ -332,5 +332,66 @@ class RadianceWeatherTests(unittest.TestCase):
             build_wea(cfg)
 
 
+class ResidentialGridTests(unittest.TestCase):
+    def test_exact_room_areas_and_multiple_grid_attribution(self):
+        scene = model()
+        scene['model']['residentialBrief'] = {'version': 1}
+        scene['spaces'] = [
+            {'id':'room-a','boundary':[[0,0],[2.3,0],[2.3,1.1],[1.1,1.1],[1.1,2.4],[0,2.4],[0,0]]},
+            {'id':'room-b','boundary':rect(3.1,0,4.4,2.2)},
+        ]
+        cfg=config(sensors={'referenceHeightAboveFloor':.75,'gridSpacing':.5},targets=[{'spaceIds':['room-a'],'minHours':1}])
+        hb,grids=build_honeybee_model(scene,cfg)
+        self.assertEqual(len(grids),2)
+        self.assertAlmostEqual(sum(grids[0].mesh.face_areas),2.3*1.1+1.1*1.3)
+        self.assertAlmostEqual(sum(grids[1].mesh.face_areas),1.3*2.2)
+        result=run_honeybee_direct_sun(scene,cfg)
+        self.assertEqual({g['spaceId'] for g in result['grids']},{'room-a','room-b'})
+        self.assertAlmostEqual(space(result,'room-a')['sampledArea'],3.96)
+        self.assertEqual(space(result,'room-a')['targetMetRatio'],1)
+        # Native model units are kept for the renderer; area and sampling height are metric.
+        mm=copy.deepcopy(scene);mm['model']['units']='mm'
+        for room in mm['spaces']:
+            room['boundary']=[[x*1000,y*1000] for x,y in room['boundary']]
+        mm['floor']['boundary']=[[x*1000,y*1000] for x,y in mm['floor']['boundary']]
+        mm['floor']['height']*=1000
+        result_mm=run_honeybee_direct_sun(mm,cfg)
+        self.assertAlmostEqual(space(result_mm,'room-a')['sampledArea'],3.96)
+        self.assertEqual(space(result_mm,'room-a')['targetMetRatio'],1)
+        self.assertAlmostEqual(result_mm['grids'][0]['vertices'][0][2],750)
+
+    def test_wall_reveal_blocks_glancing_ray_that_center_plane_misses(self):
+        scene=model();scene['walls']=[{'id':'w','height':3,'thickness':.4,'geometry':{'points':[[0,0],[2,0]]}}]
+        scene['openings']=[{'id':'window','hostWallId':'w','position':1,'width':1,'sillHeight':0,'height':3}]
+        origin,direction=(1,1,.75),(.49,-1,0)
+        hb,_=build_honeybee_model(scene,config())
+        self.assertFalse(any(_ray_triangle(origin,direction,tri) is not None for tri in _shade_triangles(hb)))
+        scene['model']['residentialBrief']={'version':1}
+        hb,_=build_honeybee_model(scene,config())
+        self.assertTrue(any(_ray_triangle(origin,direction,tri) is not None for tri in _shade_triangles(hb)))
+
+
+class AdaptiveSamplingTests(unittest.TestCase):
+    def test_window_projection_refines_near_window_but_preserves_area_and_dark_coarse_cells(self):
+        from residential_sampling import sun_projection_bounds,subdivide_cell
+        scene=model(roof=True);scene['walls']=[{'id':'w','height':2.8,'thickness':.2,'geometry':{'points':[[0,0],[2,0]]}}]
+        scene['openings']=[{'id':'window','hostWallId':'w','position':1,'width':1,'height':1.2,'sillHeight':.9}]
+        cfg=config(location={'latitude':31.2304,'longitude':121.4737,'timezone':'Asia/Shanghai'},analysisDate='2026-08-08',localTimeRange=['08:00','16:00'])
+        bounds=sun_projection_bounds(scene,cfg)
+        near=list(subdivide_cell(.5,.2,1,.7,.05,bounds));far=list(subdivide_cell(5,5,5.5,5.5,.05,bounds))
+        self.assertGreater(len(near),1);self.assertEqual(len(far),1)
+        self.assertAlmostEqual(sum((c[2]-c[0])*(c[3]-c[1]) for c in near),.25)
+        self.assertTrue(all(c[2]-c[0]<=.05+1e-8 and c[3]-c[1]<=.05+1e-8 for c in near))
+
+    def test_zero_disagreement_and_large_ratio_changes_are_not_converged(self):
+        from residential_sampling import sampling_comparison
+        scene=model();base={'allocations':[{'allocationId':'room','meanHours':0,'maxHours':0,'targetMetRatio':0}],'grids':[]}
+        fine=copy.deepcopy(base);fine['allocations'][0].update(meanHours=.001,maxHours=.5,targetMetRatio=.001)
+        comparison=sampling_comparison(base,fine,scene,config());self.assertEqual(comparison['status'],'needs_review')
+        fine['allocations'][0].update(meanHours=0,maxHours=0,targetMetRatio=.02)
+        self.assertEqual(sampling_comparison(base,fine,scene,config())['status'],'needs_review')
+        self.assertEqual(sampling_comparison(base,base,scene,config())['status'],'converged')
+
+
 if __name__ == "__main__":
     unittest.main()

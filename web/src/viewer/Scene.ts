@@ -6,9 +6,10 @@ import {
   ViewType,
 } from '@glodon/concetto-viewer';
 import type { Handle } from '@glodon/concetto-viewer';
-import { DoubleSide, Sphere, Vector3 } from 'three';
+import { DoubleSide, Sphere, Vector3, Vector2, Plane, Raycaster } from 'three';
 import {
   polygonBBoxMinExtent,
+  pointInOrOnPolygon,
   polygonInteriorLabelPoint,
   resolveSpaceLabel,
   resolveSpaceStyle,
@@ -25,9 +26,8 @@ import {
   modelToWindowFills,
   modelToWindowMeshes3D,
 } from './modelRender';
-import { sunlightGridsToFills } from './sunlightMeshRender';
-import { pedestrianDensityToFills } from './pedestrianMeshRender';
-import { trajectoriesToLineGroups, trajectoryPositionAt } from './pedestrianTrajectories';
+import { analysisLayerForView } from './analysisLayers';
+import { trajectoryPositionAt } from './pedestrianTrajectories';
 import type { PedestrianResult, PedestrianTrajectory } from '@sdd/shared';
 import { addSpaceFillMesh } from './spaceFillMesh';
 import { SpaceOverlayRegistry } from './spaceOverlay';
@@ -55,28 +55,9 @@ function alignPlan2dCamera(viewer: CCViewerApp): void {
   control.update();
 }
 
-/** 将 2D 正交相机对准一组平面点（用于定位到单个空间） */
-function focusOnPoints(viewer: CCViewerApp, points: [number, number][]): void {
-  if (!points.length) return;
-  const xs = points.map((p) => p[0]);
-  const ys = points.map((p) => p[1]);
-  const minX = Math.min(...xs), maxX = Math.max(...xs);
-  const minY = Math.min(...ys), maxY = Math.max(...ys);
-  const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
-  const extent = Math.max(maxX - minX, maxY - minY, 1);
-  const dist = Math.max(extent * 1.6, 1);
-  const { camera, control } = viewer.navigation;
-  camera.up.set(0, 0, 1);
-  control.target.set(cx, cy, 0);
-  camera.position.set(cx, cy - 1e-6, dist);
-  camera.lookAt(control.target);
-  control.update();
-}
-
 /** 2D 日照伪彩不应受 CSM/SSAO/地面影影响读数 */
-function applySunlight2dPresentation(viewer: CCViewerApp, sunlight2d: boolean): void {
-  if (sunlight2d) {
+function applyAnalysis2dPresentation(viewer: CCViewerApp, analysis2d: boolean): void {
+  if (analysis2d) {
     viewer.setEffect({ enabled: false });
     const keylight = viewer.viewport.keylight;
     keylight.castShadow = false;
@@ -103,6 +84,7 @@ export interface ViewerScene {
   setContent(content: ViewerContent): void;
   setPedestrianTime(t: number): void;
   focusSpace(spaceId: string | null): void;
+  pickSpace(clientX:number,clientY:number):string|null;
   dispose(): void;
 }
 
@@ -161,7 +143,7 @@ interface PedestrianDot {
 export function createScene(container: HTMLDivElement): ViewerScene {
   const viewer = new CCViewerApp(container, {
     preset: 'cad',
-    environment: { backgroundColor: '#F5F0E6' },
+    environment: { backgroundColor: '#FFFFFF' },
     camera: { fov: 60, near: 0.1 },
     lighting: { ambientIntensity: 0, sunIntensity: 1.2 * Math.PI, fillLightIntensity: 0, shadows: true },
     controls: { rotate: true, pan: true, zoom: true },
@@ -202,7 +184,6 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       positions.push(a[0], a[1], 0.15, b[0], b[1], 0.15);
     }
     highlightOutline = viewer.addLines({ positions, material: { color: 0xff6a00 } });
-    focusOnPoints(viewer, space.boundary);
   };
 
   let pedAnim: { trajs: PedestrianTrajectory[]; dots: PedestrianDot[]; handle: Handle } | null = null;
@@ -243,8 +224,32 @@ export function createScene(container: HTMLDivElement): ViewerScene {
   };
 
   let ro: ResizeObserver | null = null;
+  let framed = false;
+  let disposed = false;
+  let frameTimer = 0;
+  let frameCamera = () => {};
+  const revealFrame = () => {
+    if (disposed) return;
+    const rect = container.getBoundingClientRect();
+    if (rect.width < 2 || rect.height < 2) {
+      scheduleFrame();
+      return;
+    }
+    viewer.resize();
+    frameCamera();
+    framed = true;
+    container.dataset.ready = 'true';
+  };
+  const scheduleFrame = () => {
+    if (framed) {
+      viewer.resize();
+      return;
+    }
+    window.clearTimeout(frameTimer);
+    frameTimer = window.setTimeout(revealFrame, 80);
+  };
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(() => viewer.resize());
+    ro = new ResizeObserver(() => scheduleFrame());
     ro.observe(container);
   }
 
@@ -271,12 +276,8 @@ export function createScene(container: HTMLDivElement): ViewerScene {
         added = true;
       }
     } else if (content.kind === 'model') {
-      const useSunlight = content.view === 'sunlight' && content.sunlight?.status === 'completed';
-      const usePedestrian = content.view === 'pedestrian' && content.pedestrian?.status === 'completed';
-      const sun = content.sunlight;
-      const ped = content.pedestrian;
-      const gridFills = useSunlight && sun?.grids?.length ? sunlightGridsToFills(sun, content.comparison?.sunlightScale) : [];
-      const pedFills = usePedestrian && ped?.densityGrid ? pedestrianDensityToFills(ped, content.comparison?.densityScale) : [];
+      const layer = analysisLayerForView(content.view);
+      const analysis = layer?.isCompleted(content) ? layer.geometry(content) : undefined;
       if (is3d) {
         for (const fill of modelToSpaceFills(content.model)) {
           addSpaceFillMesh(viewer, fill, overlays);
@@ -294,35 +295,30 @@ export function createScene(container: HTMLDivElement): ViewerScene {
           addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
           added = true;
         }
-      } else if (useSunlight && gridFills.length) {
-        for (const fill of gridFills) {
+      } else if (analysis) {
+        for (const fill of analysis.fills) {
           addSpaceFillMesh(viewer, fill, overlays);
           added = true;
         }
-      } else if (usePedestrian) {
-        for (const fill of pedFills) {
-          addSpaceFillMesh(viewer, fill, overlays);
-          added = true;
-        }
-        for (const group of trajectoriesToLineGroups(ped!, content.comparison?.pedestrianTimeMax)) {
+        for (const group of analysis.lines) {
           viewer.addLines({ positions: group.positions, material: { color: group.color } });
           added = true;
         }
-        setupPedestrianDots(ped!);
-      } else if (!useSunlight) {
+        if (analysis.playback) setupPedestrianDots(analysis.playback);
+      } else {
         for (const fill of modelToSpaceFills(content.model)) {
           addSpaceFillMesh(viewer, fill, overlays);
           added = true;
         }
       }
       // A common floor/wall context gives both comparison panes the same initial framing.
-      if (content.comparison && (useSunlight || usePedestrian)) {
+      if (content.comparison && analysis) {
         for (const group of modelToLineGroups(content.model)) {
           viewer.addLines({ positions: group.positions, material: { color: group.color } });
           added = true;
         }
       }
-      if (!useSunlight && !usePedestrian && !is3d) {
+      if (!analysis && !is3d) {
         for (const fill of modelToWallFills(content.model)) {
           addSpaceFillMesh(viewer, fill, overlays, { depthWrite: true });
           added = true;
@@ -342,12 +338,18 @@ export function createScene(container: HTMLDivElement): ViewerScene {
       viewer.navigation.setView(navigationMode);
       viewer.navigation.setControlMode(navigationMode);
       viewer.navigation.setControlRotate(navigationMode === ViewType.ThreeD);
-      if (navigationMode === ViewType.TwoD) alignPlan2dCamera(viewer);
     }
-    if (added) viewer.fitBounds();
-    viewer.setEdgeDetection({ enabled: is3d });
-    const pseudocolor2d = content.kind === 'model' && (content.view === 'sunlight' || content.view === 'pedestrian');
-    applySunlight2dPresentation(viewer, pseudocolor2d);
+    frameCamera = () => {
+      if (navigationMode === ViewType.TwoD) alignPlan2dCamera(viewer);
+      if (added) viewer.fitBounds();
+    };
+    if (framed) frameCamera();
+    else scheduleFrame();
+    // Keep the 3D view clean; model edges are already represented by the
+    // generated wall geometry and the post-process outline is visually noisy.
+    viewer.setEdgeDetection({ enabled: false });
+    const pseudocolor2d = content.kind === 'model' && !!analysisLayerForView(content.view);
+    applyAnalysis2dPresentation(viewer, pseudocolor2d);
   };
 
   const setPedestrianTime = (t: number) => {
@@ -358,8 +360,19 @@ export function createScene(container: HTMLDivElement): ViewerScene {
     setContent,
     setPedestrianTime,
     focusSpace,
+    pickSpace(clientX,clientY) {
+      if(!currentModel)return null;
+      const rect=container.getBoundingClientRect(),ray=new Raycaster();
+      if(!rect.width||!rect.height)return null;
+      ray.setFromCamera(new Vector2((clientX-rect.left)/rect.width*2-1,1-(clientY-rect.top)/rect.height*2),viewer.navigation.camera);
+      const point=ray.ray.intersectPlane(new Plane(new Vector3(0,0,1),0),new Vector3());
+      if(!point)return null;
+      return currentModel.spaces.find(s=>pointInOrOnPolygon([point.x,point.y],s.boundary))?.id??null;
+    },
     dispose() {
+      disposed = true;
       overlays.clear(viewer);
+      window.clearTimeout(frameTimer);
       ro?.disconnect();
       viewer.dispose();
     },

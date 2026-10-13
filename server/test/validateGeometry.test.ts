@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { validateModel } from '../src/model/validate';
-import { isPolygonClosed } from '../src/model/geometry';
+import { isPolygonClosed } from '../src/geometry/polygon';
 
 const songBianDianModel =
   '../../workspaces/f1f82520-ff50-41f5-8ce3-dd471478f7c4/designs/rev-0001/model.json';

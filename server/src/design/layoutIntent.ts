@@ -1,5 +1,5 @@
 import type { SpaceModel, Vec2 } from '@sdd/shared';
-import { boundsOf, closePolygon, polygonArea, type Bounds } from '../model/geometry';
+import { boundsOf, closePolygon, polygonArea, type Bounds } from '../geometry/polygon';
 import type { AdjacencyIntent, CirculationIntent, CirculationOrientation, DesignIntent, DoorIntent, Orientation, RoomIntent, WindowIntent } from './intent';
 import type { LayoutContext } from './layoutContext';
 import type {
@@ -11,7 +11,7 @@ import type {
   LayoutWindowSpec,
 } from './layoutPlanTypes';
 import { compileLayoutPlan } from './compileLayoutPlan';
-import { cleanRing, decomposeRegions, sharedSegments, splitRegion, unionRings } from './regionGeometry';
+import { cleanRing, decomposeRegions, sharedSegments, splitRegion, unionRings } from '../geometry/regions';
 
 export interface IntentLayoutOutput {
   plan: LayoutPlanV2;

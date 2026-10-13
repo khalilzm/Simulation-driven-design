@@ -5,6 +5,7 @@ export interface WallEndTrim {
   kind: 'butt' | 'miter' | 'flush';
   /** miter（角接）：邻墙在接头点朝邻墙体内的方向。 */
   neighborBodyDir?: Vec2;
+  neighborThickness?: number;
   /** flush（T 接）：沿墙轴向墙体内回退到主墙外表面的距离（主墙半厚）。 */
   retreat?: number;
 }
@@ -40,7 +41,7 @@ function collinear(a: Vec2, b: Vec2): boolean {
 function trimAt(wall: Wall, p: Vec2, toward: Vec2, walls: Wall[]): WallEndTrim {
   // dWall 指向接头点（从相邻点 toward 指向端点 p）。
   const dWall: Vec2 = [p[0] - toward[0], p[1] - toward[1]];
-  // 1. 角接：另一面墙的端点落在 p 处。
+  const neighbors:{wall:Wall;bodyDir:Vec2}[]=[];
   for (const other of walls) {
     if (other.id === wall.id) continue;
     const op = other.geometry.points;
@@ -48,21 +49,31 @@ function trimAt(wall: Wall, p: Vec2, toward: Vec2, walls: Wall[]): WallEndTrim {
     const oStart = op[0];
     if (Math.hypot(oStart[0] - p[0], oStart[1] - p[1]) < TOL) {
       const nb: Vec2 = [op[1][0] - op[0][0], op[1][1] - op[0][1]];
-      return collinear(dWall, nb) ? { kind: 'butt' } : { kind: 'miter', neighborBodyDir: nb };
+      neighbors.push({wall:other,bodyDir:nb});
+      continue;
     }
     const oEnd = op[op.length - 1];
     if (Math.hypot(oEnd[0] - p[0], oEnd[1] - p[1]) < TOL) {
       const nb: Vec2 = [op[op.length - 2][0] - oEnd[0], op[op.length - 2][1] - oEnd[1]];
-      return collinear(dWall, nb) ? { kind: 'butt' } : { kind: 'miter', neighborBodyDir: nb };
+      neighbors.push({wall:other,bodyDir:nb});
     }
   }
-  // 2. T 接：p 落在另一面墙的内部。
+  // Straight continuations have priority over a branch sharing the same node.
+  if(neighbors.some(n=>collinear(dWall,n.bodyDir)))return {kind:'butt'};
+  // A branch at the seam of two continuing walls is a T join, independent of array order.
+  for(let i=0;i<neighbors.length;i++)for(let j=i+1;j<neighbors.length;j++) {
+    const a=neighbors[i],b=neighbors[j];
+    if(collinear(a.bodyDir,b.bodyDir)&&a.bodyDir[0]*b.bodyDir[0]+a.bodyDir[1]*b.bodyDir[1]<0)return {kind:'flush',retreat:Math.max(a.wall.thickness,b.wall.thickness)/2};
+  }
+  // T 接：p 落在另一面墙的内部（不是端点）。
   for (const other of walls) {
     if (other.id === wall.id) continue;
+    if(neighbors.some(n=>n.wall.id===other.id))continue;
     if (onInterior(p, other.geometry.points, TOL)) {
       return { kind: 'flush', retreat: other.thickness / 2 };
     }
   }
+  if(neighbors.length){const n=neighbors[0];return {kind:'miter',neighborBodyDir:n.bodyDir,neighborThickness:n.wall.thickness};}
   return { kind: 'butt' };
 }
 
@@ -77,7 +88,7 @@ export function wallEndTrims(wall: Wall, walls: Wall[]): { start: WallEndTrim; e
 
 function endpointOffsets(p: Vec2, travel: Vec2, intoBody: Vec2, half: number, trim: WallEndTrim): { left: Vec2; right: Vec2 } {
   if (trim.kind === 'miter' && trim.neighborBodyDir) {
-    return miterOffsets(p, travel, intoBody, trim.neighborBodyDir, half);
+    return miterOffsets(p, travel, intoBody, trim.neighborBodyDir, half, (trim.neighborThickness??half*2)/2);
   }
   if (trim.kind === 'flush' && trim.retreat) {
     // 沿墙轴向墙体内回退 retreat，再做垂直平切（贴主墙外表面）。
@@ -89,17 +100,15 @@ function endpointOffsets(p: Vec2, travel: Vec2, intoBody: Vec2, half: number, tr
   return { left: [p[0] + n[0], p[1] + n[1]], right: [p[0] - n[0], p[1] - n[1]] };
 }
 
-/** 角接 miter：墙两端偏移线与两墙体内夹的角平分线求交，得到外角/内角顶点。 */
-function miterOffsets(p: Vec2, travel: Vec2, bodyDir: Vec2, neighborBodyDir: Vec2, half: number): { left: Vec2; right: Vec2 } {
+/** Intersect actual wall-face lines; a 45-degree bisector only works for equal thicknesses. */
+function miterOffsets(p: Vec2, travel: Vec2, bodyDir: Vec2, neighborBodyDir: Vec2, half: number, neighborHalf: number): { left: Vec2; right: Vec2 } {
   const n = perpOffset(travel[0], travel[1], half);
   const bW = unit(bodyDir);
   const bN = unit(neighborBodyDir);
-  const bisect = unit([bW[0] + bN[0], bW[1] + bN[1]]);
-  if (Math.hypot(bisect[0], bisect[1]) < 1e-9) {
-    return { left: [p[0] + n[0], p[1] + n[1]], right: [p[0] - n[0], p[1] - n[1]] };
-  }
-  const left = intersectLines([p[0] + n[0], p[1] + n[1]], travel, p, bisect);
-  const right = intersectLines([p[0] - n[0], p[1] - n[1]], travel, p, bisect);
+  const orientation=travel[0]*bW[0]+travel[1]*bW[1]>=0?1:-1;
+  const neighborNormal=perpOffset(bN[0],bN[1],-orientation*neighborHalf);
+  const left = intersectLines([p[0] + n[0], p[1] + n[1]], travel, [p[0]+neighborNormal[0],p[1]+neighborNormal[1]], bN);
+  const right = intersectLines([p[0] - n[0], p[1] - n[1]], travel, [p[0]-neighborNormal[0],p[1]-neighborNormal[1]], bN);
   if (!left || !right) {
     return { left: [p[0] + n[0], p[1] + n[1]], right: [p[0] - n[0], p[1] - n[1]] };
   }

@@ -1,7 +1,7 @@
 import { pointInOrOnPolygon } from '@sdd/shared';
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
-import { segmentOverlap } from './regionGeometry';
+import { closePolygon } from '../geometry/polygon';
+import { segmentOverlap } from '../geometry/regions';
 
 const SNAP = 0.02;
 

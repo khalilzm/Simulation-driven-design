@@ -46,9 +46,13 @@ def _run(model: dict, config: dict, output_dir: Path) -> dict:
     use_radiance = os.environ.get("SDD_SUNLIGHT_USE_RADIANCE") == "1"
     if use_radiance:
         from radiance_engine import run_radiance_recipe
-
-        return run_radiance_recipe(model, config, output_dir)
-    return run_honeybee_direct_sun(model, config, output_dir)
+        engine = run_radiance_recipe
+    else:
+        engine = run_honeybee_direct_sun
+    if model.get('model',{}).get('residentialBrief'):
+        from residential_sampling import run_verified_residential
+        return run_verified_residential(model,config,output_dir,engine)
+    return engine(model,config,output_dir)
 
 
 def main() -> int:

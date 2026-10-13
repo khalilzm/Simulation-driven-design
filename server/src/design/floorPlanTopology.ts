@@ -1,5 +1,5 @@
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
+import { closePolygon } from '../geometry/polygon';
 import { floorCornerVertices, floorEdgeSegments } from './layoutContext';
 
 export interface FloorEdgeInfo {

@@ -1,6 +1,6 @@
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
-import { segmentOverlap, sharedSegments } from './regionGeometry';
+import { closePolygon } from '../geometry/polygon';
+import { segmentOverlap, sharedSegments } from '../geometry/regions';
 import type { BoundaryKind, LayoutBoundarySpec, LayoutSpaceSpec } from './layoutPlanTypes';
 import { segmentCoveredBy, splitBoundarySegment } from './layoutWalls';
 

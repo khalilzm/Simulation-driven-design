@@ -41,6 +41,9 @@ export interface DesignSummary {
   parentRevisionId: string | null;
   createdAt: string;
   valid: boolean;
+  kind: 'dxf' | 'scheme';
+  baseRevisionId?: string;
+  briefVersion?: number;
   sketchId?: string;
   sketchStatus?: SpaceModel['model']['sketchStatus'];
 }
@@ -89,6 +92,9 @@ export function listDesigns(sessionId: string): DesignSummary[] {
       parentRevisionId: model.model?.parentRevisionId ?? null,
       createdAt,
       valid: isAcceptedDesign(sessionId, entry, model),
+      kind: model.model?.dxfSource && !model.spaces?.length ? 'dxf' : 'scheme',
+      baseRevisionId: model.model?.residentialBrief?.baseRevisionId,
+      briefVersion: model.model?.residentialBrief?.version,
       sketchId: model.model?.sketchId,
       sketchStatus: model.model?.sketchStatus,
     });

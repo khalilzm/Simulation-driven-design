@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import earcut, { deviation } from 'earcut';
 import { centerlineWallPolygon, polygonGeometryError, wallSolidPrisms, type SpaceModel, type Vec2, type Wall } from '@sdd/shared';
 import { findBoundaryOutside } from '@sdd/shared';
-import { polygonArea } from '../src/model/geometry';
+import { polygonArea } from '../src/geometry/polygon';
 import { validateModel } from '../src/model/validate';
 import { modelToSpaceFills, modelToWallFills, modelToLineGroups, modelToDoorMeshes3D, modelToWindowMeshes3D } from '../../web/src/viewer/modelRender';
 import { extrudePolygonPrism, triangulatePolygonEarcut } from '../../web/src/viewer/polygonMesh';

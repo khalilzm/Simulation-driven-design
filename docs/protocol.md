@@ -34,15 +34,15 @@ provider 仅允许 codex 或 claude。sessionId 不传则创建新会话；既�
 
 ## 提供方适配
 
-应用 sessionId 与 CLI 原生会话 ID 分开保存。Codex 的 `thread.started.thread_id`、Claude 的 `session_id` 只用于本提供方。
+应用 sessionId 与原生会话 ID 分开保存。Codex app-server 的 `thread/start` / `thread/resume` 返回 `thread.id`，Claude 返回 `session_id`，Cursor SDK 返回 `agentId`；这些 ID 只用于本提供方。
 
 | 统一事件 | Codex | Claude |
 | --- | --- | --- |
-| native_session | thread.started | system/init 或带 session_id 的消息 |
-| text | item.completed / agent_message | assistant.message.content 的 text |
-| progress | command_execution、file_change、mcp_tool_call | tool_use |
-| completion | turn.completed | result 且 is_error=false |
-| error | error、turn.failed | result 且 is_error=true |
+| native_session | thread/start 或 thread/resume 的响应 | system/init 或带 session_id 的消息 |
+| text | item/agentMessage/delta、item/completed（最终答复去重） | assistant.message.content 的 text |
+| progress | commentary、item/tool/call（受控 JSON 文件工具） | tool_use |
+| completion | turn/completed 且 status=completed | result 且 is_error=false |
+| error | error、RPC 错误、失败的 turn、异常退出 | result 且 is_error=true |
 
 忽略 reasoning / thinking 等内部块。未知事件保留兼容空间，不直接把 stdout 当普通回复。
 
@@ -127,3 +127,7 @@ workspaces/<sessionId>/
 ```
 
 下一阶段可将对话从 session.json 拆到追加写入的 JSONL；当前单会话串行和原子文件替换足以支撑骨架。
+
+## 公共引擎任务记录
+
+采光、日照、人流任务统一写 envelope.json schemaVersion 2，结果继续写各能力的 result.json schemaVersion 1。状态、错误码、摘要、日志与历史兼容约定见 [公共引擎任务封装](../server/src/analysis/runtime/task.md)。HTTP 成功结果保留原字段，采光运行器补充 inputHash；失败任务通过异常与评价记录中的 taskId 定位，不补造缺失结果。

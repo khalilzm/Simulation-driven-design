@@ -9,6 +9,7 @@ export function SunlightLegend({ result, scale = resolveSunlightColorScale(resul
   result: SunlightResult; scale?: ReturnType<typeof resolveSunlightColorScale>;
 }) {
   const ticks = sunlightLegendTicks(scale, 5);
+  const differentTargets=new Set(result.targets?.map(t=>t.minHours)).size>1;
   const targetHours = result.targets?.find((t) => t.met !== undefined)?.minHours ?? result.targets?.[0]?.minHours;
 
   return (
@@ -28,7 +29,7 @@ export function SunlightLegend({ result, scale = resolveSunlightColorScale(resul
       </div>
       {targetHours !== undefined && (
         <div className="sunlight-legend-note">
-          达标线：≥ {targetHours} h（见左侧校验表，色条不单独标绿）
+          {differentTargets?'各房间目标时长不同，请查看房间评价表':`参考目标：≥ ${targetHours} h，实际达标按房间面积比例评价`}
         </div>
       )}
       <div className="sunlight-legend-engine">{result.engineVersion}</div>

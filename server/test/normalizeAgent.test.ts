@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closePolygon } from '../src/model/geometry';
+import { closePolygon } from '../src/geometry/polygon';
 import { normalizeAgentGeometry } from '../src/model/normalizeAgent';
 import { validateAgentModel } from '../src/model/validateAgent';
 

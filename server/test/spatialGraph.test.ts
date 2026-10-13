@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SpaceModel, Vec2 } from '@sdd/shared';
-import { OUTSIDE, buildSpatialGraph, reachableFrom, unreachableSpaces } from '../src/design/spatialGraph';
+import { OUTSIDE, buildSpatialGraph, reachableFrom, unreachableSpaces } from '../src/geometry/spatialGraph';
 
 function rect(x0: number, y0: number, x1: number, y1: number): Vec2[] {
   return [[x0, y0], [x1, y0], [x1, y1], [x0, y1], [x0, y0]];

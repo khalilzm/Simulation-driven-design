@@ -1,13 +1,12 @@
 import type {
+  WorkspaceCanvasDocument,
+  ScenarioDefinition,
+  ScenarioGenerationRequest,
   Capability,
   ProviderId,
   ProviderInfo,
   SpaceModel,
   StreamEvent,
-  SunlightConfig,
-  SunlightResult,
-  PedestrianConfig,
-  PedestrianResult,
   SketchSource,
   SketchReport,
   SpaceTaskMode,
@@ -16,7 +15,7 @@ import type {
   OptimizationRun,
   AutomaticOptimizationRequest,
   OptimizationComparison,
-  OptimizationSetup, WorkbenchAnalysis, WorkbenchAnalysisRequest, WorkbenchOptimizationRequest,
+  OptimizationSetup, WorkbenchAnalysis, WorkbenchAnalysisRequest,
   OptimizationTaskDraft, OptimizationTaskInterpretation,
   OptimizationAnalysisView,
   DxfUploadResponse,
@@ -24,9 +23,22 @@ import type {
   ResidentialBriefDocument,
 } from '@sdd/shared';
 
+export async function loadCanvasDocument(sessionId: string): Promise<WorkspaceCanvasDocument | null> {
+  const response = await fetch(`/api/canvas/${encodeURIComponent(sessionId)}`);
+  if (!response.ok) throw new Error('画布恢复失败');
+  return response.json();
+}
+export async function saveCanvasDocument(sessionId: string, snapshot: unknown): Promise<void> {
+  const response = await fetch(`/api/canvas/${encodeURIComponent(sessionId)}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ snapshot }),
+  });
+  if (!response.ok) throw new Error('画布保存失败，布局仍保留在本机');
+}
+
 export interface StatusResponse {
   providers: ProviderInfo[];
   capabilities: Capability[];
+  scenarios: ScenarioDefinition[];
 }
 
 export async function fetchStatus(): Promise<StatusResponse> {
@@ -67,7 +79,7 @@ async function streamNdjson(r: Response, onEvent: (e: StreamEvent) => void): Pro
 }
 
 export async function streamChat(
-  body: { provider: ProviderId; sessionId?: string; message: string; parentRevisionId?: string | null; mode?: SpaceTaskMode; sketchId?: string },
+  body: { provider: ProviderId; sessionId?: string; message: string; parentRevisionId?: string | null; mode?: SpaceTaskMode; sketchId?: string; requirePreparedInputs?: boolean; scenario?: ScenarioGenerationRequest; residentialBrief?: { baseRevisionId: string; version: number; baseModelHash: string } },
   onEvent: (e: StreamEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
@@ -111,17 +123,14 @@ export async function uploadDxf(sessionId: string | undefined, filename: string,
   return result as DxfUploadResponse;
 }
 
-export async function fetchFileText(sessionId: string, name: string): Promise<string> {
-  const r = await fetch(`/api/files/${sessionId}/${encodeURIComponent(name)}`);
-  if (!r.ok) throw new Error(`读取文件失败: ${r.status}`);
-  return r.text();
-}
-
 export interface DesignSummary {
   revisionId: string;
   parentRevisionId: string | null;
   createdAt: string;
   valid?: boolean;
+  kind?: 'dxf' | 'scheme';
+  baseRevisionId?: string;
+  briefVersion?: number;
   sketchId?: string;
   sketchStatus?: SketchReport['status'];
 }
@@ -137,26 +146,6 @@ export interface SaveDesignResult {
   valid: boolean;
   errors: string[];
   revisionId?: string;
-}
-
-export async function fetchSunlightDemoPass(): Promise<{ model: SpaceModel; sunlight: unknown }> {
-  const r = await fetch('/api/examples/sunlight-demo-pass');
-  if (!r.ok) throw new Error(`加载日照示例失败: ${r.status}`);
-  return r.json() as Promise<{ model: SpaceModel; sunlight: unknown }>;
-}
-
-export async function patchDesignFloor(
-  sessionId: string,
-  revisionId: string,
-  floor: { elevation: number; height: number },
-): Promise<void> {
-  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/floor`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(floor),
-  });
-  const j = (await r.json()) as { errors?: string[] };
-  if (!r.ok) throw new Error(j.errors?.join('；') || `保存楼层参数失败: ${r.status}`);
 }
 
 export async function saveSunlightConfig(
@@ -194,28 +183,6 @@ export async function loadDesign(sessionId: string, revisionId: string): Promise
   return r.json();
 }
 
-export interface SunlightRunResponse {
-  taskId: string;
-  inputHash: string;
-  simulationDir: string;
-  /** 本次是否自动从示例生成了 designs/…/sunlight.json */
-  sunlightConfigCreated?: boolean;
-  config: SunlightConfig;
-  result: SunlightResult;
-}
-
-export async function loadPedestrianConfig(
-  sessionId: string,
-  revisionId: string,
-): Promise<PedestrianConfig | null> {
-  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/pedestrian`);
-  if (r.status === 404) return null;
-  const j = (await r.json()) as { config?: PedestrianConfig; errors?: string[] };
-  if (!r.ok) throw new Error(j.errors?.join('；') || `读取疏散配置失败: ${r.status}`);
-  if (!j.config) throw new Error('疏散配置响应无效');
-  return j.config;
-}
-
 export async function savePedestrianConfig(
   sessionId: string,
   revisionId: string,
@@ -230,74 +197,12 @@ export async function savePedestrianConfig(
   if (!r.ok) throw new Error(j.errors?.join('；') || `保存疏散配置失败: ${r.status}`);
 }
 
-export async function loadSunlightConfig(
-  sessionId: string,
-  revisionId: string,
-): Promise<SunlightConfig | null> {
-  const r = await fetch(`/api/designs/${sessionId}/${revisionId}/sunlight`);
-  if (r.status === 404) return null;
-  const j = (await r.json()) as { config?: SunlightConfig; errors?: string[] };
-  if (!r.ok) throw new Error(j.errors?.join('；') || `读取日照配置失败: ${r.status}`);
-  if (!j.config) throw new Error('日照配置响应无效');
-  return j.config;
-}
-
-export async function runSunlight(sessionId: string, revisionId: string): Promise<SunlightRunResponse> {
-  const r = await fetch('/api/sunlight/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, revisionId }),
-  });
-  const j = (await r.json()) as SunlightRunResponse & { error?: string; hint?: string };
-  if (!r.ok) {
-    const msg = [j.error, j.hint].filter(Boolean).join(' — ');
-    throw new Error(msg || `日照分析失败: ${r.status}`);
-  }
-  return j;
-}
-
-export async function checkSunlight(): Promise<{ capability: Capability; python: { ok: boolean; error?: string } }> {
-  const r = await fetch('/api/sunlight/check');
-  if (!r.ok) throw new Error(`检查日照环境失败: ${r.status}`);
-  return r.json();
-}
-
-export interface PedestrianRunResponse {
-  taskId: string;
-  inputHash: string;
-  simulationDir: string;
-  /** 本次是否自动按面积生成了 designs/…/pedestrian.json */
-  configCreated?: boolean;
-  config: PedestrianConfig;
-  result: PedestrianResult;
-}
-
-export async function runPedestrian(sessionId: string, revisionId: string): Promise<PedestrianRunResponse> {
-  const r = await fetch('/api/pedestrian/run', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId, revisionId }),
-  });
-  const j = (await r.json()) as PedestrianRunResponse & { error?: string; errors?: string[] };
-  if (!r.ok) {
-    const msg = [j.error, j.errors?.join('；')].filter(Boolean).join(' — ');
-    throw new Error(msg || `人流疏散分析失败: ${r.status}`);
-  }
-  return j;
-}
-
-export async function checkPedestrian(): Promise<{ capability: Capability; python: { ok: boolean; error?: string } }> {
-  const r = await fetch('/api/pedestrian/check');
-  if (!r.ok) throw new Error(`检查疏散环境失败: ${r.status}`);
-  return r.json();
-}
-
 export async function generate(
   sessionId: string,
   provider: ProviderId,
   onEvent: (e: StreamEvent) => void,
   parentRevisionId?: string | null,
-  task?: { mode: SpaceTaskMode; sketchId?: string; residentialBrief?: { baseRevisionId: string; version: number; baseModelHash: string } },
+  task?: { mode: SpaceTaskMode; sketchId?: string; requirePreparedInputs?: boolean; scenario?: ScenarioGenerationRequest; residentialBrief?: { baseRevisionId: string; version: number; baseModelHash: string } },
   signal?: AbortSignal,
 ): Promise<void> {
   const r = await fetch('/api/generate', {
@@ -309,20 +214,28 @@ export async function generate(
   await streamNdjson(r, onEvent);
 }
 
-export async function loadResidentialBrief(sessionId: string, revisionId: string): Promise<ResidentialBriefDocument> {
-  const response = await fetch(`/api/residential-briefs/${sessionId}/${revisionId}`);
+export async function loadResidentialBrief(sessionId: string, revisionId: string, signal?: AbortSignal): Promise<ResidentialBriefDocument> {
+  const response = await fetch(`/api/residential-briefs/${sessionId}/${revisionId}`, { signal });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? '无法加载空间需求');
   return body;
 }
 
-export async function saveResidentialBrief(sessionId: string, document: ResidentialBriefDocument, brief: ResidentialBrief): Promise<ResidentialBriefDocument> {
+export async function saveResidentialBrief(sessionId: string, document: ResidentialBriefDocument, brief: ResidentialBrief, signal?: AbortSignal): Promise<ResidentialBriefDocument> {
   const response = await fetch(`/api/residential-briefs/${sessionId}/${brief.baseRevisionId}`, {
-    method: 'PUT', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ brief, expectedVersion: document.version, baseModelHash: document.baseModelHash }),
+    method: 'PUT', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ brief, expectedVersion: document.version, expectedGraphLayoutVersion: document.graphLayoutVersion ?? 0, baseModelHash: document.baseModelHash }),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body.error ?? '无法保存空间需求');
+  return body;
+}
+
+export async function interpretResidentialBrief(provider: ProviderId, sessionId: string, module: 'graph'|'metrics', message: string, brief: ResidentialBrief, signal?: AbortSignal): Promise<{ brief: ResidentialBrief; summary: string }> {
+  const response = await fetch('/api/residential-briefs/interpret', { method: 'POST', signal, headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, sessionId, module, message, brief }) });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.error ?? 'Agent 整理需求失败');
   return body;
 }
 
@@ -330,22 +243,6 @@ export async function loadSketchReport(sessionId: string, revisionId: string): P
   const r = await fetch(`/api/sketches/${sessionId}/${revisionId}`);
   if (!r.ok) throw new Error(`读取草图还原记录失败: ${r.status}`);
   return r.json();
-}
-
-export async function confirmSketchReport(sessionId: string, revisionId: string, body: {
-  extractionHash?: string; confirm: boolean; wallId?: string; lengthM?: number;
-}): Promise<SketchReport> {
-  const r = await fetch(`/api/sketches/${sessionId}/${revisionId}/confirm`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
-  });
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error ?? '确认失败');
-  return data;
-}
-
-export async function streamOptimization(body: OptimizationRequest, signal: AbortSignal,
-  onEvent: (event: OptimizationEvent) => void): Promise<void> {
-  return streamOptimizationRequest('/api/optimizations', body, signal, onEvent);
 }
 
 export async function streamAutomaticOptimization(body: AutomaticOptimizationRequest, signal: AbortSignal,
@@ -384,11 +281,6 @@ async function streamOptimizationRequest(url: string, body: OptimizationRequest 
   } finally { reader.releaseLock(); }
 }
 
-export function streamWorkbenchOptimization(body: WorkbenchOptimizationRequest, signal: AbortSignal,
-  onEvent: (event: OptimizationEvent) => void): Promise<void> {
-  return streamOptimizationRequest('/api/optimizations/workbench', body, signal, onEvent);
-}
-
 async function workbenchJson<T>(url: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const response = await fetch(url, body === undefined ? { signal } : {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal,
@@ -415,13 +307,6 @@ export async function latestOptimization(sessionId: string, revisionId: string, 
   return (await r.json()).run;
 }
 
-export async function previewOptimization(sessionId: string, runId: string, candidateId: string): Promise<SpaceModel> {
-  const r = await fetch(`/api/optimizations/${sessionId}/${runId}/candidates/${candidateId}`);
-  const data = await r.json();
-  if (!r.ok) throw new Error(data.error ?? '候选预览失败');
-  return data;
-}
-
 export async function loadOptimizationComparison(sessionId: string, runId: string, candidateId: string): Promise<OptimizationComparison> {
   const r = await fetch(`/api/optimizations/${sessionId}/${runId}/candidates/${candidateId}/comparison`);
   const data = await r.json();
@@ -441,4 +326,9 @@ export async function adoptOptimization(sessionId: string, runId: string, candid
 export async function loadResidentialSolverReport(sessionId:string,revisionId:string):Promise<import('@sdd/shared').ResidentialSolverDiagnostics> {
   const r=await fetch(`/api/designs/${encodeURIComponent(sessionId)}/${encodeURIComponent(revisionId)}/residential-solver`);
   if(!r.ok)throw new Error('该版本没有可读取的住宅求解报告');return r.json();
+}
+
+export async function residentialEvaluation(sessionId:string,revisionId:string,run=false,signal?:AbortSignal):Promise<import('@sdd/shared').ResidentialDaylightRecord|null> {
+  const r=await fetch(`/api/designs/${encodeURIComponent(sessionId)}/${encodeURIComponent(revisionId)}/residential-evaluation`,{method:run?'POST':'GET',signal});
+  if(!r.ok){const body=await r.json().catch(()=>({}));throw new Error(body.error??'日照评价请求失败');}return r.json();
 }

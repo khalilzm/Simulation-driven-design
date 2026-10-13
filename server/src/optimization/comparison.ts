@@ -1,3 +1,4 @@
+import { loadCompletedEngineResult } from '../analysis/runtime/task';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { OptimizationAnalysisView, OptimizationComparison, OptimizationEvaluation,
@@ -31,7 +32,7 @@ export function loadAnalysis(run: Pick<OptimizationRun, 'sessionId' | 'baseRevis
     if (result.status !== 'completed' || result.engineVersion !== evidence.engineVersion) {
       throw new Error('分析结果尚未完成或引擎版本不匹配');
     }
-    return result;
+    return envelope.schemaVersion === '2' ? loadCompletedEngineResult(run.sessionId, evidence.taskId, kind) : result;
   };
   const sunlight = readResult('sunlight') as SunlightResult;
   const pedestrian = readResult('pedestrian') as PedestrianResult;

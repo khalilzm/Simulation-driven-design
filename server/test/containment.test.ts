@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closePolygon } from '../src/model/geometry';
+import { closePolygon } from '../src/geometry/polygon';
 import { validateModel } from '../src/model/validate';
 
 test('validateModel 拒绝边线穿出凹口的功能区', () => {

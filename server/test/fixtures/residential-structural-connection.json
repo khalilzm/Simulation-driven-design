@@ -1,0 +1,869 @@
+{
+  "walls": [
+    {
+      "id": "S01",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0,
+            0.1
+          ],
+          [
+            1,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S01"
+      }
+    },
+    {
+      "id": "S02",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            2.8000000000000003,
+            0.1
+          ],
+          [
+            5,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S02"
+      }
+    },
+    {
+      "id": "S03",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            7,
+            0.1
+          ],
+          [
+            9.200000000000001,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S03"
+      }
+    },
+    {
+      "id": "S04",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            11,
+            0.1
+          ],
+          [
+            12,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S04"
+      }
+    },
+    {
+      "id": "S05",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0,
+            8.9
+          ],
+          [
+            1.5,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S05"
+      }
+    },
+    {
+      "id": "S06",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            3.3000000000000003,
+            8.9
+          ],
+          [
+            5.5,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S06"
+      }
+    },
+    {
+      "id": "S07",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            6.5,
+            8.9
+          ],
+          [
+            8.700000000000001,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S07"
+      }
+    },
+    {
+      "id": "S08",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            10.5,
+            8.9
+          ],
+          [
+            12,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S08"
+      }
+    },
+    {
+      "id": "S09",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0.1,
+            0.2
+          ],
+          [
+            0.1,
+            8.8
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S09"
+      }
+    },
+    {
+      "id": "S10",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            11.9,
+            0.2
+          ],
+          [
+            11.9,
+            8.8
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S10"
+      }
+    },
+    {
+      "id": "S11",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            4.4,
+            0.2
+          ],
+          [
+            4.4,
+            3
+          ]
+        ]
+      },
+      "thickness": 0.20000000000000018,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S11"
+      }
+    },
+    {
+      "id": "S12",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            4.4,
+            5.2
+          ],
+          [
+            4.4,
+            8.8
+          ]
+        ]
+      },
+      "thickness": 0.20000000000000018,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "S12"
+      }
+    },
+    {
+      "id": "dxf-host-D1",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            5.5,
+            8.9
+          ],
+          [
+            6.5,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "D1"
+      }
+    },
+    {
+      "id": "dxf-host-W1",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            1,
+            0.1
+          ],
+          [
+            2.8000000000000003,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "W1"
+      }
+    },
+    {
+      "id": "dxf-host-W2",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            5,
+            0.1
+          ],
+          [
+            7,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "W2"
+      }
+    },
+    {
+      "id": "dxf-host-W3",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            9.200000000000001,
+            0.1
+          ],
+          [
+            11,
+            0.1
+          ]
+        ]
+      },
+      "thickness": 0.2,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "W3"
+      }
+    },
+    {
+      "id": "dxf-host-W4",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            1.5,
+            8.9
+          ],
+          [
+            3.3000000000000003,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "W4"
+      }
+    },
+    {
+      "id": "dxf-host-W5",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            8.700000000000001,
+            8.9
+          ],
+          [
+            10.5,
+            8.9
+          ]
+        ]
+      },
+      "thickness": 0.1999999999999993,
+      "height": 2.8,
+      "fixed": true,
+      "role": "structural",
+      "analysisProperties": {
+        "dxfSourceId": "W5"
+      }
+    },
+    {
+      "id": "grid-wall-0",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            4.5,
+            3
+          ],
+          [
+            11.8,
+            3
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-1",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            9.2,
+            5.7
+          ],
+          [
+            11.8,
+            5.7
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-2",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            9.2,
+            3
+          ],
+          [
+            9.2,
+            7.7
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-3",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0.2,
+            4.2
+          ],
+          [
+            4.3,
+            4.2
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-4",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            4.3,
+            4.2
+          ],
+          [
+            4.3,
+            5.2
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-5",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            0.2,
+            2.2
+          ],
+          [
+            3.2,
+            2.2
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-6",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            3.2,
+            0.2
+          ],
+          [
+            3.2,
+            4.2
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    },
+    {
+      "id": "grid-wall-7",
+      "geometry": {
+        "type": "polyline",
+        "points": [
+          [
+            9.2,
+            7.7
+          ],
+          [
+            11.8,
+            7.7
+          ]
+        ]
+      },
+      "thickness": 0.12,
+      "height": 2.8,
+      "fixed": false,
+      "role": "partition",
+      "generatedBy": "layout-grid-v1"
+    }
+  ],
+  "spaces": [
+    {
+      "id": "room-b5cc490d-5e41-4ba8-9be6-b7f18d9952c8",
+      "allocationId": "room-b5cc490d-5e41-4ba8-9be6-b7f18d9952c8",
+      "boundary": [
+        [
+          4.5,
+          0.2
+        ],
+        [
+          11.8,
+          0.2
+        ],
+        [
+          11.8,
+          2.94
+        ],
+        [
+          4.5,
+          2.94
+        ],
+        [
+          4.5,
+          0.2
+        ]
+      ],
+      "typeId": "grid-type-0",
+      "usage": "卧室1",
+      "enclosed": true,
+      "targetArea": 14,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-85eb8e0f-9bc8-41fd-af65-5603c367b668",
+      "allocationId": "room-85eb8e0f-9bc8-41fd-af65-5603c367b668",
+      "boundary": [
+        [
+          9.26,
+          3.06
+        ],
+        [
+          11.8,
+          3.06
+        ],
+        [
+          11.8,
+          5.64
+        ],
+        [
+          9.26,
+          5.64
+        ],
+        [
+          9.26,
+          3.06
+        ]
+      ],
+      "typeId": "grid-type-1",
+      "usage": "卫生间1",
+      "enclosed": true,
+      "targetArea": 5,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-84257fef-679a-4da1-b310-c9e1100ee55c",
+      "allocationId": "room-84257fef-679a-4da1-b310-c9e1100ee55c",
+      "boundary": [
+        [
+          0.2,
+          4.26
+        ],
+        [
+          4.24,
+          4.26
+        ],
+        [
+          4.24,
+          5.2
+        ],
+        [
+          4.3,
+          5.2
+        ],
+        [
+          4.3,
+          8.8
+        ],
+        [
+          0.2,
+          8.8
+        ],
+        [
+          0.2,
+          4.26
+        ]
+      ],
+      "typeId": "grid-type-2",
+      "usage": "卧室2",
+      "enclosed": true,
+      "targetArea": 14,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-cfe955cf-0631-487b-a95a-58a505f79b61",
+      "allocationId": "room-cfe955cf-0631-487b-a95a-58a505f79b61",
+      "boundary": [
+        [
+          0.2,
+          2.26
+        ],
+        [
+          3.14,
+          2.26
+        ],
+        [
+          3.14,
+          4.14
+        ],
+        [
+          0.2,
+          4.14
+        ],
+        [
+          0.2,
+          2.26
+        ]
+      ],
+      "typeId": "grid-type-3",
+      "usage": "阳台1",
+      "enclosed": true,
+      "targetArea": 4,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-735b79b0-db90-40f5-83c0-39fa60f67dbe",
+      "allocationId": "room-735b79b0-db90-40f5-83c0-39fa60f67dbe",
+      "boundary": [
+        [
+          0.2,
+          0.2
+        ],
+        [
+          3.14,
+          0.2
+        ],
+        [
+          3.14,
+          2.14
+        ],
+        [
+          0.2,
+          2.14
+        ],
+        [
+          0.2,
+          0.2
+        ]
+      ],
+      "typeId": "grid-type-4",
+      "usage": "厨房1",
+      "enclosed": true,
+      "targetArea": 7,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-615aab7c-9297-465a-8153-2f779ce5eedb",
+      "allocationId": "room-615aab7c-9297-465a-8153-2f779ce5eedb",
+      "boundary": [
+        [
+          9.26,
+          5.76
+        ],
+        [
+          11.8,
+          5.76
+        ],
+        [
+          11.8,
+          7.64
+        ],
+        [
+          9.26,
+          7.64
+        ],
+        [
+          9.26,
+          5.76
+        ]
+      ],
+      "typeId": "grid-type-5",
+      "usage": "卫生间2",
+      "enclosed": true,
+      "targetArea": 5,
+      "performancePreferences": {}
+    },
+    {
+      "id": "room-42b70b74-d362-41bd-a250-1720e42acefe",
+      "allocationId": "room-42b70b74-d362-41bd-a250-1720e42acefe",
+      "boundary": [
+        [
+          3.26,
+          0.2
+        ],
+        [
+          4.3,
+          0.2
+        ],
+        [
+          4.3,
+          3
+        ],
+        [
+          4.5,
+          3
+        ],
+        [
+          4.5,
+          3.06
+        ],
+        [
+          9.14,
+          3.06
+        ],
+        [
+          9.14,
+          7.7
+        ],
+        [
+          9.2,
+          7.7
+        ],
+        [
+          9.2,
+          7.76
+        ],
+        [
+          11.8,
+          7.76
+        ],
+        [
+          11.8,
+          8.8
+        ],
+        [
+          4.5,
+          8.8
+        ],
+        [
+          4.5,
+          5.2
+        ],
+        [
+          4.36,
+          5.2
+        ],
+        [
+          4.36,
+          4.2
+        ],
+        [
+          4.3,
+          4.2
+        ],
+        [
+          4.3,
+          4.14
+        ],
+        [
+          3.26,
+          4.14
+        ],
+        [
+          3.26,
+          0.2
+        ]
+      ],
+      "typeId": "grid-type-6",
+      "usage": "客餐厅1",
+      "enclosed": true,
+      "targetArea": 28,
+      "performancePreferences": {}
+    }
+  ]
+}

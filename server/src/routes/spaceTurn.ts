@@ -11,15 +11,18 @@ import { loadOutlineContext, resolveFullCoverage } from '../design/outlineContex
 import { runSpaceTurn } from '../design/runSpaceTurn';
 import { loadSketch, resolveSketch } from '../sketch/store';
 import { readSketchReport, runSketchTurn } from '../sketch/runSketchTurn';
-import { prepareResidentialGeneration, residentialGenerationMessage } from '../design/residentialBrief';
+import { prepareScenarioGeneration } from '../scenarios/registry';
+import { legacyResidentialRequest } from '../scenarios/legacy';
+import type { PreparedScenarioGeneration } from '../scenarios/types';
 
 /** 对话和“生成方案”共享会话、轮廓准备及 Agent 执行。 */
 export async function handleSpaceTurn(req: Request, res: Response, generate = false): Promise<void> {
-  const { provider, sessionId, message, parentRevisionId, requireFullCoverage, mode, sketchId, residentialBrief } = (req.body ?? {}) as {
+  const { provider, sessionId, message, parentRevisionId, requireFullCoverage, mode, sketchId, residentialBrief, scenario, requirePreparedInputs } = (req.body ?? {}) as {
     provider?: unknown; sessionId?: unknown; message?: unknown;
     parentRevisionId?: unknown; requireFullCoverage?: unknown;
     mode?: unknown; sketchId?: unknown;
-    residentialBrief?: unknown;
+    residentialBrief?: unknown; requirePreparedInputs?: unknown;
+    scenario?: unknown;
   };
   if (!isValidProvider(provider)) {
     res.status(400).json({ error: 'invalid provider' });
@@ -42,13 +45,18 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
   if (!/^[A-Za-z0-9_-]{1,100}$/.test(id)) { res.status(400).json({ error: 'invalid sessionId' }); return; }
   if (mode !== undefined && !['sketch', 'generate', 'edit'].includes(String(mode))) { res.status(400).json({ error: 'invalid mode' }); return; }
   if (sketchId !== undefined && typeof sketchId !== 'string') { res.status(400).json({ error: 'invalid sketchId' }); return; }
-  let residential: ReturnType<typeof prepareResidentialGeneration> | undefined;
-  if (residentialBrief !== undefined) {
+  let prepared: PreparedScenarioGeneration | undefined;
+  if (residentialBrief !== undefined || scenario !== undefined) {
     try {
+      if (residentialBrief !== undefined && scenario !== undefined) throw new Error('不能同时提交场景输入和旧住宅需求');
       if (mode !== 'edit') throw new Error('节点图生成必须使用固定底图模式');
-      residential = prepareResidentialGeneration(id, residentialBrief);
-      if (parentRevisionId !== residential.model.model.revisionId) throw new Error('生成所用底图与节点图不一致');
+      prepared = prepareScenarioGeneration(id, scenario !== undefined ? scenario : legacyResidentialRequest(residentialBrief));
+      if (parentRevisionId !== prepared.base.model.revisionId) throw new Error('生成所用底图与节点图不一致');
     } catch (error) { res.status(400).json({ error: error instanceof Error ? error.message : String(error) }); return; }
+  }
+  if (requirePreparedInputs === true && mode !== 'sketch') {
+    const missing = prepared ? prepared.missingInputs : ['导入底图、保存空间节点与仿真指标'];
+    if (missing.length) { res.status(400).json({ error: `生成前请先${missing.join('、')}` }); return; }
   }
   const session = loadSession(id) ?? createSession(id, provider);
   if (session.provider !== provider) {
@@ -82,7 +90,7 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
     return;
   }
   const outline = mode === 'generate' ? { source: 'none' as const } : loadOutlineContext(cwd, parent);
-  const userMessage = residential ? residentialGenerationMessage(residential.document) : typeof message === 'string' && message.trim() ? message
+  const userMessage = prepared ? [prepared.message, typeof message === 'string' ? message : ''].filter(Boolean).join('\n\n') : typeof message === 'string' && message.trim() ? message
     : sketchMode ? '忠实还原当前草图中的墙体、门窗和原始功能标注；不重新设计。'
       : '根据对话描述生成一套可落地的户型分区（外轮廓 + 房间），面积与功能名称写在 assumptions/usage 里。';
   const previousCoverage = session.requireFullCoverage ?? session.messages
@@ -115,9 +123,9 @@ export async function handleSpaceTurn(req: Request, res: Response, generate = fa
       ? await runSketchTurn({ cwd, revisionId, source, message: userMessage, model: config.model || undefined,
         previous: previousSketch ?? undefined }, getAdapter(provider), emit, abort.signal)
       : await runSpaceTurn({
-      cwd, revisionId, message: userMessage, outline,
-      nativeSessionId: mode === 'generate' || residential ? undefined : session.nativeSessionId, model: config.model || undefined, requireDesign: true,
-      residentialBrief: residential?.document,
+      cwd, revisionId, sessionId: id, message: userMessage, outline,
+      nativeSessionId: mode === 'generate' || prepared ? undefined : session.nativeSessionId, model: config.model || undefined, requireDesign: true,
+      scenario: prepared,
     }, getAdapter(provider), emit, abort.signal);
     if (!sketchMode && result.nativeSessionId) session.nativeSessionId = result.nativeSessionId;
     emit({ type: 'done', status: result.failed ? 'failed' : 'completed' });

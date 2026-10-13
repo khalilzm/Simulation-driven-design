@@ -1,7 +1,7 @@
 import DxfParser from 'dxf-parser';
 import type { ILwpolylineEntity, IPolylineEntity } from 'dxf-parser';
 import type { Vec2 } from '@sdd/shared';
-import { normalizePolygon, outlineBBox, polygonArea } from '../model/geometry';
+import { normalizePolygon, outlineBBox, polygonArea } from '../geometry/polygon';
 
 export interface DxfOutline {
   boundary: Vec2[];

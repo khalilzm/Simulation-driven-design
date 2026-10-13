@@ -1,10 +1,12 @@
+import { DEFAULT_DAYLIGHT_SETTINGS, daylightSettings, daylightSettingsError, roomDaylight, type RoomDaylightTarget, type DaylightSettings } from './daylight';
 import type { SpaceModel } from './model';
+import type { PublicSpaceReview, StructuralWallRelationships, WallAlignmentReview, StructuralConnectionReview } from './residentialLayoutQuality';
 import { parseSunlightConfig, type SunlightConfig } from './sunlight';
 
 export type RequirementPriority = 'hard' | 'soft';
-export type RoomKind = 'living' | 'bedroom' | 'kitchen' | 'bathroom' | 'study' | 'circulation' | 'other';
+export type RoomKind = 'living' | 'bedroom' | 'kitchen' | 'bathroom' | 'study' | 'balcony' | 'circulation' | 'other';
 export type RelationKind = 'direct' | 'adjacent' | 'public_access' | 'no_direct';
-export const ROOM_LABELS: Record<RoomKind, string> = { living: '客餐厅', bedroom: '卧室', kitchen: '厨房', bathroom: '卫生间', study: '书房', circulation: '公共交通空间', other: '其他空间' };
+export const ROOM_LABELS: Record<RoomKind, string> = { living: '客餐厅', bedroom: '卧室', kitchen: '厨房', bathroom: '卫生间', study: '书房', balcony: '阳台', circulation: '公共交通空间', other: '其他空间' };
 export const RELATION_LABELS: Record<RelationKind, string> = { direct: '直接连通', adjacent: '相邻', public_access: '经公共空间可达', no_direct: '禁止直接连通' };
 export interface RoomRequirement {
   id: string;
@@ -12,6 +14,8 @@ export interface RoomRequirement {
   kind: RoomKind;
   area: { min: number; target: number; max: number };
   window: 'required' | 'preferred' | 'none';
+  daylight?: RoomDaylightTarget;
+  /** Legacy direct-sun target retained for reading historical documents. */
   sunlight: { enabled: boolean; minHours: number; minAreaRatio: number; priority: RequirementPriority };
   /** Only these rooms may be crossed on a public_access route. Living/circulation default to true. */
   allowThrough?: boolean;
@@ -26,26 +30,35 @@ export interface RoomRelation {
   to: string;
   kind: RelationKind;
   priority: RequirementPriority;
+  /** Diagram-only endpoint selection, never a physical door position. */
+  diagramHandles?: {from:'left'|'right';to:'left'|'right'};
 }
 export interface ResidentialLayoutSettings {
   gridSize: number;
   passageWidth: number;
   doorWidth: number;
   doorDepth: number;
+  partitionThickness?: number;
 }
-export const DEFAULT_LAYOUT_SETTINGS: ResidentialLayoutSettings = { gridSize: .5, passageWidth: .9, doorWidth: .9, doorDepth: .9 };
-export const layoutSettings = (brief: ResidentialBrief): ResidentialLayoutSettings => ({ ...DEFAULT_LAYOUT_SETTINGS, ...brief.layout });
+export const DEFAULT_LAYOUT_SETTINGS = { gridSize: .5, passageWidth: .9, doorWidth: .9, doorDepth: .9, partitionThickness: .12 };
+export const layoutSettings = (brief: ResidentialBrief) => ({ ...DEFAULT_LAYOUT_SETTINGS, ...brief.layout, partitionThickness:brief.layout?.partitionThickness??DEFAULT_LAYOUT_SETTINGS.partitionThickness });
 export const permitsThrough = (room: RoomRequirement) => room.allowThrough ?? ['living','circulation'].includes(room.kind);
 export interface ResidentialBrief {
   schemaVersion: '1';
   baseRevisionId: string;
   rooms: RoomRequirement[];
   relations: RoomRelation[];
+  daylight?: DaylightSettings;
   sunlight: SunlightConfig;
   notes: string;
   layout?: ResidentialLayoutSettings;
+  /** Explicit user intent for retaining a wall inside an open space, never supplied by the solver. */
+  structuralWallUses?: {wallId: string; purpose: string}[];
 }
 export interface ResidentialBriefDocument {
+  /** Diagram revisions do not advance the semantic requirement version. Legacy documents omit them. */
+  graphLayoutVersion?: number;
+  graphLayoutUpdatedAt?: string;
   brief: ResidentialBrief;
   baseModelHash: string;
   version: number;
@@ -55,7 +68,7 @@ export interface BriefIssue { level: 'error' | 'warning'; message: string; nodeI
 export const entranceNodeId = (doorId: string) => `entrance:${doorId}`;
 
 export function createResidentialBrief(baseRevisionId: string): ResidentialBrief {
-  return { schemaVersion: '1', baseRevisionId, rooms: [], relations: [], notes: '',
+  return { schemaVersion: '1', baseRevisionId, rooms: [], relations: [], notes: '', daylight:structuredClone(DEFAULT_DAYLIGHT_SETTINGS),
     sunlight: { schemaVersion: '1', location: { latitude: 31.2304, longitude: 121.4737, timezone: 'Asia/Shanghai' },
       analysisDate: '2026-12-21', localTimeRange: ['08:00', '16:00'], northDegrees: 0, timestepMinutes: 30,
       sensors: { referenceHeightAboveFloor: 0.75, gridSpacing: 0.5 } } };
@@ -67,6 +80,7 @@ export function createResidentialPreset(baseRevisionId: string, entranceDoorId?:
   const room = (id: string, name: string, kind: RoomKind, area: [number, number, number], x: number, y: number): RoomRequirement => ({
     id, name, kind, area: { min: area[0], target: area[1], max: area[2] },
     window: kind === 'bedroom' ? 'required' : kind === 'bathroom' ? 'none' : 'preferred',
+    daylight:{enabled:kind==='bedroom'||kind==='living',minIlluminanceLux:300,minAreaRatio:.5,priority:'soft'},
     sunlight: { enabled: kind === 'bedroom', minHours: 2, minAreaRatio: 0.5, priority: 'soft' }, position: { x, y },
   });
   brief.rooms = [
@@ -97,7 +111,17 @@ export function parseResidentialBrief(raw: unknown): ResidentialBrief {
   if (!Array.isArray(b.rooms) || b.rooms.length > 32 || !Array.isArray(b.relations) || b.relations.length > 200) fail('最多支持 32 个房间、200 条关系');
   const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
   if (b.layout && (!['gridSize','passageWidth','doorWidth','doorDepth'].every(k => finite(b.layout![k as keyof ResidentialLayoutSettings])) || b.layout.gridSize < .2 || b.layout.gridSize > 1 || b.layout.passageWidth < .6 || b.layout.passageWidth > 2 || b.layout.doorWidth < .6 || b.layout.doorWidth > 1.5 || b.layout.doorDepth < .6 || b.layout.doorDepth > 2)) fail('布局参数超出支持范围');
+  if (b.layout?.partitionThickness !== undefined && (!finite(b.layout.partitionThickness) || b.layout.partitionThickness < .06 || b.layout.partitionThickness > .5)) fail('隔墙厚度须为0.06～0.50m');
   const ids = new Set<string>();
+  if (b.structuralWallUses !== undefined) {
+    if (!Array.isArray(b.structuralWallUses) || b.structuralWallUses.length > 512) fail('承重墙用途须为列表');
+    const wallIds = new Set<string>();
+    for (const use of b.structuralWallUses) {
+      if (!use || typeof use.wallId !== 'string' || !use.wallId.trim() || wallIds.has(use.wallId)
+        || typeof use.purpose !== 'string' || !use.purpose.trim() || use.purpose.length > 500) fail('承重墙用途须包含唯一墙体ID和明确用途');
+      wallIds.add(use.wallId);
+    }
+  }
   for (const r of b.rooms) {
     if (!r || typeof r.id !== 'string' || !/^room-[a-zA-Z0-9_-]+$/.test(r.id) || ids.has(r.id)) fail('房间 ID 无效或重复');
     ids.add(r.id);
@@ -107,10 +131,11 @@ export function parseResidentialBrief(raw: unknown): ResidentialBrief {
     if (!['required','preferred','none'].includes(r.window)) fail('外窗需求无效');
     if (r.allowThrough !== undefined && typeof r.allowThrough !== 'boolean') fail('穿行许可必须为布尔值');
     if (r.bodySize !== undefined && (!Array.isArray(r.bodySize) || r.bodySize.length !== 2 || !r.bodySize.every(n => finite(n) && n >= .5 && n <= 20))) fail('主体尺寸须为0.5～20m的两个数值');
+    if(r.daylight&&(!Number.isFinite(r.daylight.minIlluminanceLux)||r.daylight.minIlluminanceLux<1||r.daylight.minIlluminanceLux>100000||!Number.isFinite(r.daylight.minAreaRatio)||r.daylight.minAreaRatio<=0||r.daylight.minAreaRatio>1||typeof r.daylight.enabled!=='boolean'||!['hard','soft'].includes(r.daylight.priority)))fail('房间采光目标无效');
     const s = r.sunlight;
     if (!s || typeof s.enabled !== 'boolean' || !finite(s.minHours) || s.minHours < 0 || s.minHours > 24
       || !finite(s.minAreaRatio) || s.minAreaRatio <= 0 || s.minAreaRatio > 1 || !['hard','soft'].includes(s.priority)) fail('房间日照目标无效');
-    if (!r.position || ![r.position.x,r.position.y].every((n) => finite(n) && n >= 0 && n <= 1)) fail('节点图位置无效');
+    if (!r.position || ![r.position.x,r.position.y].every((n) => finite(n) && Math.abs(n) <= 100)) fail('节点图位置无效');
   }
   const edgeIds = new Set<string>();
   for (const e of b.relations) {
@@ -118,9 +143,11 @@ export function parseResidentialBrief(raw: unknown): ResidentialBrief {
     edgeIds.add(e.id);
     if (typeof e.from !== 'string' || typeof e.to !== 'string' || e.from === e.to) fail('关系必须连接两个不同节点');
     if (![e.from,e.to].every((id) => ids.has(id) || /^entrance:[A-Za-z][\w-]*$/.test(id))) fail('关系引用了不存在的节点');
+    if (e.diagramHandles && (!['left','right'].includes(e.diagramHandles.from)||!['left','right'].includes(e.diagramHandles.to))) fail('节点连接点无效');
     if (!Object.hasOwn(RELATION_LABELS, e.kind) || !['hard','soft'].includes(e.priority)) fail('关系类型或优先级无效');
   }
   if (typeof b.notes !== 'string' || b.notes.length > 4000) fail('补充说明最多 4000 字');
+  if(b.daylight){const error=daylightSettingsError(b.daylight);if(error)fail(error);}
   const sun = parseSunlightConfig(b.sunlight);
   if (!sun.ok) return fail(sun.errors.join('；'));
   if (sun.config.targets?.length) fail('日照目标应设置在房间节点上，不能另设全局房间目标');
@@ -133,16 +160,16 @@ export function checkResidentialBrief(brief: ResidentialBrief, model: SpaceModel
   try { parseResidentialBrief(brief); } catch (e) { return [{ level: 'error', message: e instanceof Error ? e.message : String(e) }]; }
   const add = (level: BriefIssue['level'], message: string, nodeId?: string) => issues.push({ level, message, nodeId });
   if (!model.model.dxfSource || model.spaces.length) add('error', '请关联尚未生成房间的住宅 DXF 固定底图');
+  if(daylightSettings(brief).sensors.referenceHeightAboveFloor>=model.floor.height/(model.model.units==='mm'?1000:1))add('error','采光评价平面须低于室内层高');
   if (brief.baseRevisionId !== model.model.revisionId) add('error', '节点图与底图版本不一致');
+  for (const use of brief.structuralWallUses ?? []) if (!model.walls.some(w => w.id === use.wallId && w.fixed && w.role === 'structural')) add('error', `承重墙用途引用了未知固定承重墙 ${use.wallId}`);
   if (!brief.rooms.length) add('error', '请至少添加一个房间节点');
   const names = new Set<string>();
   for (const r of brief.rooms) {
     if (!r.name.trim() || names.has(r.name.trim())) add('error', '房间名称不能为空或重复', r.id);
     names.add(r.name.trim());
     if (r.window === 'required' && !model.windows.length) add('error', `${r.name} 要求外窗，但底图没有窗洞`, r.id);
-    const minutes = (s: string) => Number(s.slice(0,2))*60+Number(s.slice(3,5));
-    const available = (minutes(brief.sunlight.localTimeRange[1])-minutes(brief.sunlight.localTimeRange[0]))/60;
-    if (r.sunlight.enabled && r.sunlight.minHours > available) add('error', `${r.name} 的日照目标超过分析时段长度`, r.id);
+
   }
   const area = model.model.dxfSource?.areaM2 ?? 0;
   const min = brief.rooms.reduce((n,r) => n+r.area.min,0);
@@ -172,7 +199,7 @@ export function checkResidentialBrief(brief: ResidentialBrief, model: SpaceModel
     add('error', `入户口 ${entrance.slice(9)} 不能必须直接进入多个房间（${names}）。请仅保留一个直接连通房间，其余改为「经公共空间可达」`, entrance);
   }
   if (brief.rooms.length && !brief.relations.some((e) => e.from.startsWith('entrance:') || e.to.startsWith('entrance:'))) add('warning', '尚未指定入户联系；生成时仍要求所有房间从入户可达');
-  if (!brief.rooms.some((r) => r.sunlight.enabled)) add('warning', '尚未设置房间日照目标；将保留全局工况，但不能据此判断房间是否达标');
+  if (!brief.rooms.some((r) => roomDaylight(r).enabled)) add('warning', '尚未设置房间采光目标；将计算照度，但不能据此判断房间是否达标');
   return issues;
 }
 
@@ -188,11 +215,17 @@ export interface ResidentialSolverDiagnostics {
   failureType?: string;
   searchVisits?: number;
   searchLimitReached?: boolean;
+  /** Partial allocations rejected before the full geometry/door checks. */
+  earlyConnectionPrunes?: Record<string,number>;
   gridSize?: number;
   candidateCount?: number;
   errors?: string[];
   warnings?: string[];
   failures?: {reason:string;count:number}[];
   rejectedCandidates?: {spaces:SpaceModel['spaces'];walls:SpaceModel['walls'];errors:string[]}[];
-  quality?: {errors:string[];warnings:string[]};
+  quality?: {errors:string[];warnings:string[];structuralWalls?:StructuralWallRelationships;publicSpaces?:PublicSpaceReview[];wallAlignment?:WallAlignmentReview;structuralConnections?:StructuralConnectionReview};
+  publicCore?: {boundary:SpaceModel['floor']['boundary'];area:number};
+  acceptedSpaces?: SpaceModel['spaces'];
+  scoreComponents?: {wallRelationships:number;wallAlignment?:number;publicFragmentation:number;preferences:number};
+  qualityChecksVersion?: number;
 }

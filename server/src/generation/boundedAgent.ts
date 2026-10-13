@@ -14,7 +14,7 @@ export async function boundedAgent(adapter:ProviderAdapter,input:ChatTurnInput,e
     if(signal.aborted) {parentAbort();await failure;}
     return await Promise.race([adapter.run({...input,onActivity:activity},e=> {
       if(settled||controller.signal.aborted)return;
-      if(e.type!=='progress'||!['模型推理中，请稍候…','正在启动 Agent…','正在启动 Cursor Agent…'].includes(e.message)) activity();
+      if(e.type!=='progress'||!['模型推理中，请稍候…','正在启动 Agent…','正在启动 Cursor Agent…','正在启动 Codex Agent…'].includes(e.message)) activity();
       emit(e);
     },controller.signal),failure]);
   } finally {settled=true;clearTimeout(total);clearTimeout(idle!);signal.removeEventListener('abort',parentAbort);}

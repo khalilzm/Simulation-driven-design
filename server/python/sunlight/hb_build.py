@@ -40,6 +40,30 @@ def _point_in_polygon(x: float, y: float, ring: List[List[float]]) -> bool:
     return inside
 
 
+def _point_on_segment(x: float, y: float, a: List[float], b: List[float], eps: float = 1e-8) -> bool:
+    cross = (x - a[0]) * (b[1] - a[1]) - (y - a[1]) * (b[0] - a[0])
+    if abs(cross) > eps * max(1.0, math.hypot(b[0] - a[0], b[1] - a[1])):
+        return False
+    return min(a[0], b[0]) - eps <= x <= max(a[0], b[0]) + eps and min(a[1], b[1]) - eps <= y <= max(a[1], b[1]) + eps
+
+
+def _segments_intersect(a: List[float], b: List[float], c: List[float], d: List[float]) -> bool:
+    def orient(p, q, r):
+        return (q[0] - p[0]) * (r[1] - p[1]) - (q[1] - p[1]) * (r[0] - p[0])
+    values = (orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b))
+    proper = ((values[0] > 1e-8 and values[1] < -1e-8) or (values[0] < -1e-8 and values[1] > 1e-8)) and ((values[2] > 1e-8 and values[3] < -1e-8) or (values[2] < -1e-8 and values[3] > 1e-8))
+    touching = any(abs(v) <= 1e-8 and _point_on_segment(p[0], p[1], q, r) for v, p, q, r in ((values[0], c, a, b), (values[1], d, a, b), (values[2], a, c, d), (values[3], b, c, d)))
+    return proper or touching
+
+
+def _cell_intersects_ring(x0: float, y0: float, x1: float, y1: float, ring: List[List[float]]) -> bool:
+    corners = [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]
+    if any(_point_in_polygon(p[0], p[1], ring) or any(_point_on_segment(p[0], p[1], a, b) for a, b in zip(ring, ring[1:])) for p in corners):
+        return True
+    edges = list(zip(corners, corners[1:] + corners[:1]))
+    return any(_segments_intersect(a, b, c, d) for a, b in edges for c, d in zip(ring, ring[1:]))
+
+
 def sensor_space_ids(model: Dict[str, Any], sensors: Sequence[Any]) -> List[str]:
     """每个传感器归到包含它的 space；不在任何 space 内则归为开放区域。"""
     spaces = model.get("spaces", [])
@@ -103,8 +127,18 @@ def _wall_shades(model: Dict[str, Any], elevation: float, floor_h: float) -> Lis
                     q1 = (x0 + (x1 - x0) * t1, y0 + (y1 - y0) * t1, z0 + bottom)
                     q2 = (q1[0], q1[1], z0 + top)
                     q3 = (q0[0], q0[1], z0 + top)
-                    face = Face3D([Point3D(*q0), Point3D(*q1), Point3D(*q2), Point3D(*q3)])
-                    shades.append(Shade(f"shade-{wall['id']}-{len(shades)}", face))
+                    quad = [q0,q1,q2,q3]
+                    thickness = float(wall.get("thickness",0)) if model.get("model",{}).get("residentialBrief") else 0
+                    if thickness > 0:
+                        nx,ny = -(y1-y0)/seg_len*thickness/2,(x1-x0)/seg_len*thickness/2
+                        front = [(p[0]+nx,p[1]+ny,p[2]) for p in quad]
+                        back = [(p[0]-nx,p[1]-ny,p[2]) for p in quad]
+                        quads = [front,back]+[[front[j],front[(j+1)%4],back[(j+1)%4],back[j]] for j in range(4)]
+                    else:
+                        quads = [quad]
+                    for surface in quads:
+                        face = Face3D([Point3D(*p) for p in surface])
+                        shades.append(Shade(f"shade-{wall['id']}-{len(shades)}", face))
     for item in model.get("externalContext", []):
         pts = item.get("geometry", {}).get("points", [])
         for i in range(len(pts) - 1):
@@ -143,11 +177,16 @@ def build_honeybee_model(model: Dict[str, Any], config: Dict[str, Any]) -> Tuple
     ref_h = float(config["sensors"]["referenceHeightAboveFloor"])
     sensor_z = elevation + ref_h
 
-    # 整块楼板布点（含开放区域），传感器再按所属空间归属，避免开放区出现空洞。
-    floor_face = _ring_to_face3d(floor["boundary"], sensor_z)
-    grid = SensorGrid.from_face3d("grid-floor", [floor_face], spacing, None, 0, False)
-    grid.room_identifier = "floor"
-    grids: List[SensorGrid] = [grid]
+    unit_scale = 1000.0 if model.get("model", {}).get("units") == "mm" else 1.0
+    spacing *= unit_scale
+    sensor_z = elevation + ref_h * unit_scale
+    if model.get("model", {}).get("residentialBrief"):
+        grids = residential_sensor_grids(model, spacing, sensor_z, config)
+    else:
+        floor_face = _ring_to_face3d(floor["boundary"], sensor_z)
+        grid = SensorGrid.from_face3d("grid-floor", [floor_face], spacing, None, 0, False)
+        grid.room_identifier = "floor"
+        grids = [grid]
 
     shades = _wall_shades(model, elevation, floor_h)
     if floor.get("topObstruction", False):
@@ -158,3 +197,52 @@ def build_honeybee_model(model: Dict[str, Any], config: Dict[str, Any]) -> Tuple
     for g in grids:
         hb.properties.radiance.add_sensor_grid(g)
     return hb, grids
+
+
+def residential_sensor_grids(model: Dict[str, Any], spacing: float, z: float, config=None) -> List[SensorGrid]:
+    """Exact orthogonal room tiling, retaining edge area and excluding wall footprints."""
+    from ladybug_geometry.geometry3d.mesh import Mesh3D
+    from residential_sampling import sun_projection_bounds, subdivide_cell
+    unit_scale = 1000 if model.get("model",{}).get("units")=="mm" else 1
+    bounds = sun_projection_bounds(model,config) if config and not config.get('daylightMode') else []
+    fine_step = min(spacing,(config.get('_residentialSampling',{}).get('fineStep',.1)*unit_scale)) if config else spacing
+    grids = []
+    total_faces = 0
+    for index, space in enumerate(model.get("spaces", [])):
+        ring = space["boundary"]
+        xs, ys = [], []
+        for axis, values in [(0,xs),(1,ys)]:
+            low, high = min(p[axis] for p in ring), max(p[axis] for p in ring)
+            values.extend(p[axis] for p in ring)
+            value = low + spacing
+            while value < high - 1e-8:
+                values.append(value)
+                value += spacing
+            values[:] = sorted(set(round(v,8) for v in values))
+        if len(xs)*len(ys)>100000:
+            raise ValueError("住宅日照网格规模超出预算，请增大测点间距")
+        vertices, faces = [], []
+        for x0,x1 in zip(xs,xs[1:]):
+            for y0,y1 in zip(ys,ys[1:]):
+                if x1-x0<1e-8 or y1-y0<1e-8 or (not _point_in_polygon((x0+x1)/2,(y0+y1)/2,ring) and not _cell_intersects_ring(x0,y0,x1,y1,ring)):
+                    continue
+                cell_bounds = list(subdivide_cell(x0,y0,x1,y1,fine_step,bounds))
+                if _cell_intersects_ring(x0,y0,x1,y1,ring) and any(abs(a[0]-b[0]) > 1e-7 and abs(a[1]-b[1]) > 1e-7 for a,b in zip(ring,ring[1:])):
+                    cell_bounds = list(subdivide_cell(x0,y0,x1,y1,min(fine_step,0.1*unit_scale),bounds))
+                for xx0,yy0,xx1,yy1 in cell_bounds:
+                    if not _point_in_polygon((xx0+xx1)/2,(yy0+yy1)/2,ring):
+                        continue
+                    start = len(vertices)
+                    vertices.extend([Point3D(xx0,yy0,z),Point3D(xx1,yy0,z),Point3D(xx1,yy1,z),Point3D(xx0,yy1,z)])
+                    faces.append((start,start+1,start+2,start+3))
+                    if len(faces)+total_faces>30000:
+                        raise ValueError("自适应日照测点超过30000预算，无法确认采样精度")
+        total_faces += len(faces)
+        if total_faces>30000:
+            raise ValueError("住宅日照测点总量超出预算，请增大测点间距")
+        if not faces:
+            continue
+        grid = SensorGrid.from_mesh3d(f"grid-room-{index}",Mesh3D(tuple(vertices),tuple(faces)))
+        grid.room_identifier = space["id"]
+        grids.append(grid)
+    return grids

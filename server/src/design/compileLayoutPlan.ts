@@ -1,6 +1,6 @@
 import type { Door, Opening, SpaceModel, SpaceType, Vec2, Wall, Window } from '@sdd/shared';
 import { pointInOrOnPolygon, polygonGeometryError } from '@sdd/shared';
-import { closePolygon, polygonArea } from '../model/geometry';
+import { closePolygon, polygonArea } from '../geometry/polygon';
 import { validateLayoutCompleteness } from '../model/layoutValidation';
 import type { LayoutContext } from './layoutContext';
 import type { LayoutBoundarySpec, LayoutPlanV2 } from './layoutPlanTypes';
@@ -10,7 +10,7 @@ import { snapExteriorBoundarySegments } from './layoutBoundarySnap';
 import { parseLayoutPlan } from './parseLayoutPlan';
 import { ensureSpaceInsideFloor } from './layoutSpaceBoundary';
 import { snapSpaceBoundaryToFloorPlan } from './floorPlanNormalize';
-import { cleanRing, outsideArea, segmentOverlap } from './regionGeometry';
+import { cleanRing, outsideArea, segmentOverlap } from '../geometry/regions';
 import { validateLayoutAccess } from './layoutAccess';
 import { catalogTypeIdForModel } from './layoutCatalogDefaults';
 

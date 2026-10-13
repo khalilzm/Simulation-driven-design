@@ -1,6 +1,6 @@
 import type { SpaceModel } from '@sdd/shared';
 import { COMPONENT_CATALOG } from '@sdd/shared';
-import { closePolygon, outlineBBox } from './model/geometry';
+import { closePolygon, outlineBBox } from './geometry/polygon';
 import { floorCornerVertices, floorEdgeSegments, type LayoutContext } from './design/layoutContext';
 import { floorTopologyForPrompt } from './design/floorPlanTopology';
 import { createLayoutContext } from './design/layoutContext';

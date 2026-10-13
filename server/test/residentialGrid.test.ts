@@ -5,13 +5,13 @@ import os from 'node:os';
 import path from 'node:path';
 import { createResidentialBrief, createResidentialPreset, layoutSettings, parseResidentialBrief, permitsThrough, type RoomKind, type RoomRequirement } from '@sdd/shared';
 import { parseFixedEnvelopeDxf } from '../src/dxf/fixedEnvelope';
-import { buildResidentialGrid } from '../src/design/residentialGrid';
-import { parseResidentialStrategy, residentialStrategyPrompt, type PartitionStrategy } from '../src/design/residentialStrategy';
-import { solveResidentialLayout, assessResidentialQuality, ResidentialSolveError } from '../src/design/residentialSolver';
+import { buildResidentialGrid, solveResidentialGrid } from '../src/scenarios/residential/residentialGrid';
+import { parseResidentialStrategy, residentialStrategyPrompt, type PartitionStrategy } from '../src/scenarios/residential/residentialStrategy';
+import { solveResidentialLayout, assessResidentialQuality, ResidentialSolveError } from '../src/scenarios/residential/residentialSolver';
 import { validateModel } from '../src/model/validate';
 import { validateAgentModel } from '../src/model/validateAgent';
-import { validateResidentialCandidate } from '../src/design/residentialBrief';
-import { runResidentialTurn } from '../src/design/runResidentialTurn';
+import { validateResidentialCandidate } from '../src/scenarios/residential/residentialBrief';
+import { runResidentialTurn } from '../src/scenarios/residential/runResidentialTurn';
 const fixture=fs.readFileSync(new URL('../../examples/inputs/residential-fixed-envelope/residential-fixed-envelope.dxf',import.meta.url),'utf8');
 function setup() {
   const base=parseFixedEnvelopeDxf(fixture,'fixed.dxf');base.model.revisionId='rev-0001';
@@ -79,6 +79,23 @@ test('默认两居一卫预设直接走v2网格流程；交通按需而非必备
   assert.deepEqual(result.report.quality.errors,[]);assert.deepEqual(validateModel(result.model).errors,[]);
   for(const r of brief.rooms)assert.ok(result.model.spaces.some(s=>s.id===r.id));
   assert.ok(result.report.checks.filter(c=>c.includes('public_access')).length>=4);
+  const traffic=result.model.spaces.find(s=>s.id==='solver-circulation');
+  assert.ok(traffic);
+  assert.equal(traffic.enclosed,false,'自动交通区必须是开放公共区域');
+  assert.ok(result.report.quality.circulation?.openConnections.some(c=>c.spaceId==='room-living'&&c.netWidthM>=layoutSettings(brief).passageWidth-1e-7));
+});
+
+test('用户隔墙厚度参与完整求解，普通隔墙按180mm生成，承重墙续接按宿主厚度',()=>{
+  const {base}=setup(),brief=createResidentialPreset('rev-0001','D1');
+  brief.layout={...layoutSettings(brief),partitionThickness:.18};
+  const strategy={schemaVersion:2 as const,rationale:'明确普通隔墙厚度',roomOrder:brief.rooms.map(r=>r.id),circulation:'auto' as const,preferences:[]};
+  const result=solveResidentialLayout(base,brief,strategy,'rev-0002');
+  assert.deepEqual(validateModel(result.model).errors,[]);assert.deepEqual(result.report.quality.errors,[]);
+  const continuationIds=new Set(result.report.quality.structuralConnections.connections.filter(c=>c.kind==='continuation').map(c=>c.partitionWallId));
+  assert.ok(result.model.walls.some(w=>w.generatedBy&&!continuationIds.has(w.id)));
+  for(const wall of result.model.walls.filter(w=>w.generatedBy&&!continuationIds.has(w.id)))assert.ok(Math.abs(wall.thickness-.18)<1e-8);
+  for(const connection of result.report.quality.structuralConnections.connections.filter(c=>c.kind==='continuation'))assert.ok(connection.thicknessDifference<1e-8);
+  assert.deepEqual(validateResidentialCandidate(result.model,base,{brief,version:1,baseModelHash:'fixture',updatedAt:''}),[]);
 });
 
 test('新生成拒绝旧切分协议，格式修复耗尽后终止而不调用旧算法',async t=>{
@@ -87,4 +104,55 @@ test('新生成拒绝旧切分协议，格式修复耗尽后终止而不调用�
   const result=await runResidentialTurn({cwd,revisionId:'rev-0002',residentialBrief:{brief,version:1,baseModelHash:'x',updatedAt:''},base},{id:'echo',async run(_input,emit){calls++;emit({type:'text',text:JSON.stringify(legacy)});return {failed:false};}},()=>{},undefined,(...args)=>{solves++;return solveResidentialLayout(...args);});
   assert.equal(result.failed,true);assert.equal(calls,3);assert.equal(solves,0);
   const report=JSON.parse(fs.readFileSync(path.join(cwd,'designs/rev-0002/solver-report.json'),'utf8'));assert.equal(report.failureType,'strategy_format');
+});
+
+test('React Flow扩展图坐标与端点可保存，图端点信息不交给布局Agent',()=>{
+ const {base,brief}=setup();brief.rooms[0].position={x:-.5,y:1.4};brief.relations[0].diagramHandles={from:'right',to:'left'};
+ assert.deepEqual(parseResidentialBrief(brief),brief);assert.doesNotMatch(residentialStrategyPrompt('rev-0002',brief,base),/diagramHandles/);
+ assert.throws(()=>parseResidentialBrief({...brief,rooms:[{...brief.rooms[0],position:{x:Infinity,y:0}}]}),/位置/);
+ assert.throws(()=>parseResidentialBrief({...brief,relations:[{...brief.relations[0],diagramHandles:{from:'top',to:'left'}}]}),/连接点/);
+});
+
+test('七房间套房硬连接在分配阶段保留，窗偏好不能拆散卧室与套卫',()=>{
+  const {base,brief}=setup(),byId=new Map(brief.rooms.map(r=>[r.id,r]));
+  const main=byId.get('room-main')!,second=byId.get('room-second')!,bath=byId.get('room-bathroom')!,living=byId.get('room-living')!,kitchen=byId.get('room-kitchen')!;
+  second.area={min:10,target:14,max:22};
+  const balcony={...structuredClone(bath),id:'room-balcony',name:'阳台',kind:'balcony' as const,area:{min:2,target:4,max:8}};
+  const bath2={...structuredClone(bath),id:'room-bathroom2',name:'公共卫生间'};
+  brief.rooms=[main,second,bath,balcony,living,bath2,kitchen];
+  brief.relations=[{id:'rel-entry',from:'entrance:D1',to:living.id,kind:'direct',priority:'hard'},
+    ...[main,second,kitchen,balcony,bath2].map((r,i)=>({id:`rel-living-${i}`,from:living.id,to:r.id,kind:'direct' as const,priority:'hard' as const})),
+    {id:'rel-suite',from:main.id,to:bath.id,kind:'direct',priority:'hard'}];
+  const strategy={schemaVersion:2 as const,rationale:'套房与公共枢纽',roomOrder:[living,main,second,kitchen,balcony,bath,bath2].map(r=>r.id),circulation:'auto' as const,
+    preferences:[{roomId:living.id,side:'south' as const,windowId:'W2'},{roomId:main.id,windowId:'W4'},{roomId:second.id,windowId:'W3'},{roomId:kitchen.id,windowId:'W1'},{roomId:balcony.id,side:'south' as const},{roomId:bath.id,windowId:'W5'},{roomId:bath2.id,side:'north' as const}]};
+  const before=structuredClone(brief),solved=solveResidentialGrid(base,brief,strategy,'rev-0002');
+  assert.deepEqual(solved.report.quality.errors,[]);assert.deepEqual(validateModel(solved.model).errors,[]);assert.deepEqual(validateAgentModel(solved.model).errors,[]);
+  assert.deepEqual(validateResidentialCandidate(solved.model,base,{brief,version:1,baseModelHash:'x',updatedAt:''}),[]);
+  assert.ok(solved.report.checks.some(c=>c.includes('rel-suite')));assert.ok(Object.keys(solved.report.earlyConnectionPrunes).some(k=>k.includes('room-main↔room-bathroom')));
+  assert.deepEqual(brief,before);
+});
+
+test('搜索超时带具体硬连接冲突进入策略重试，第二轮可正常交付',async t=>{
+  const {base,brief,strategy}=setup(),cwd=fs.mkdtempSync(path.join(os.tmpdir(),'sdd-grid-time-retry-'));t.after(()=>fs.rmSync(cwd,{recursive:true,force:true}));
+  let calls=0,solves=0;
+  const result=await runResidentialTurn({cwd,revisionId:'rev-0002',residentialBrief:{brief,version:1,baseModelHash:'x',updatedAt:''},base},{id:'echo',async run(input,emit){
+    if(++calls===2){assert.match(input.message,/time_budget/);assert.match(input.message,/具体搜索冲突/);assert.match(input.message,/客餐厅.*厨房/);assert.match(input.message,/布局第1轮/);}
+    emit({type:'text',text:JSON.stringify(strategy)});return {failed:false};
+  }},()=>{},undefined,(...args)=>{
+    if(++solves===1)throw new ResidentialSolveError('20秒预算内未找到布局，不能认定无解',{status:'time_budget',failures:[{reason:'客餐厅↔厨房：未保留可开门的共享边界',count:12}]});
+    return solveResidentialLayout(...args);
+  });
+  assert.equal(result.failed,false);assert.equal(calls,2);assert.equal(solves,2);
+  const folder=path.join(cwd,'designs/rev-0002');assert.equal(JSON.parse(fs.readFileSync(path.join(folder,'solver-attempt-1.json'),'utf8')).failureType,'time_budget');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(folder,'generation-state.json'),'utf8')).status,'completed');
+});
+
+test('连续搜索超时最多三个布局轮次，不无限重试，也不放宽需求',async t=>{
+  const {base,brief,strategy}=setup(),snapshot=structuredClone(brief),cwd=fs.mkdtempSync(path.join(os.tmpdir(),'sdd-grid-time-limit-'));t.after(()=>fs.rmSync(cwd,{recursive:true,force:true}));let calls=0,solves=0;
+  const result=await runResidentialTurn({cwd,revisionId:'rev-0002',residentialBrief:{brief,version:1,baseModelHash:'x',updatedAt:''},base},{id:'echo',async run(input,emit){
+    calls++;if(calls===3){assert.match(input.message,/布局第1轮/);assert.match(input.message,/布局第2轮/);}
+    emit({type:'text',text:JSON.stringify(strategy)});return {failed:false};
+  }},()=>{},undefined,()=>{solves++;throw new ResidentialSolveError('搜索预算耗尽',{status:'time_budget'});});
+  assert.equal(result.failed,true);assert.equal(calls,3);assert.equal(solves,3);assert.deepEqual(brief,snapshot);
+  const state=JSON.parse(fs.readFileSync(path.join(cwd,'designs/rev-0002/generation-state.json'),'utf8'));assert.equal(state.status,'failed');assert.equal(state.attempt,3);
 });

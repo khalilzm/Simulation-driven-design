@@ -10,11 +10,12 @@ import { briefSunlightConfig, checkResidentialBrief, createResidentialBrief, cre
 import { parseFixedEnvelopeDxf } from '../src/dxf/fixedEnvelope';
 import { saveDesign, loadDesign, isAcceptedDesign } from '../src/model/store';
 import { workspacesDir } from '../src/config';
-import { loadResidentialBrief, prepareResidentialGeneration, saveResidentialBrief, validateResidentialCandidate } from '../src/design/residentialBrief';
+import { loadResidentialBrief, prepareResidentialGeneration, saveResidentialBrief, validateResidentialCandidate } from '../src/scenarios/residential/residentialBrief';
 import { handleSpaceTurn } from '../src/routes/spaceTurn';
 import { echoAdapter } from '../src/providers/echo';
 import type { ChatTurnInput } from '../src/providers/types';
-import { buildSpatialGraph, reachableFrom } from '../src/design/spatialGraph';
+import { buildSpatialGraph, reachableFrom } from '../src/geometry/spatialGraph';
+import { RESIDENTIAL_SCENARIO } from '@sdd/shared';
 
 const fixture = fs.readFileSync(new URL('../../examples/inputs/residential-fixed-envelope/residential-fixed-envelope.dxf',import.meta.url),'utf8');
 const room = (): RoomRequirement => ({id:'room-main',name:'主卧',kind:'bedroom',area:{min:10,target:14,max:30},window:'required',
@@ -56,7 +57,7 @@ test('需求身份和节点图坐标独立于几何；日照目标绑定稳定 r
   assert.equal(model.spaces.length,0);
 });
 
-test('检查关系冲突、悬空节点、面积超限、未知入户及不可能日照目标', (t) => {
+test('检查关系冲突、悬空节点、面积超限、未知入户及无效采光目标', (t) => {
   const {brief,model}=setup(t);
   const second=room();second.id='room-second';second.name='次卧';brief.rooms.push(second);
   brief.relations.push({id:'rel-a',from:'room-main',to:'room-second',kind:'direct',priority:'hard'},
@@ -65,7 +66,10 @@ test('检查关系冲突、悬空节点、面积超限、未知入户及不可�
   brief.relations.pop();brief.relations[0].from='entrance:missing';
   assert.ok(checkResidentialBrief(brief,model).some((i) => i.message.includes('当前底图')));
   brief.rooms[0].sunlight.minHours=10;
-  assert.ok(checkResidentialBrief(brief,model).some((i) => i.message.includes('分析时段')));
+  assert.ok(!checkResidentialBrief(brief,model).some((i) => i.message.includes('分析时段')));
+  brief.rooms[0].daylight={enabled:true,minIlluminanceLux:-1,minAreaRatio:.5,priority:'soft'};
+  assert.throws(()=>parseResidentialBrief(brief),/采光目标无效/);
+  brief.rooms[0].daylight.minIlluminanceLux=300;
   brief.rooms.forEach((r) => {r.area={min:70,target:70,max:80};});
   assert.ok(checkResidentialBrief(brief,model).some((i) => i.message.includes('超过轮廓')));
   brief.relations[0].to='room-deleted';
@@ -128,10 +132,12 @@ test('Agent 调用之前已冻结节点图与仿真设置；未保存/错误底�
   assert.ok(response.events.some((e) => e.type==='done'&&e.status==='failed'));
 });
 
-test('节点任务生成候选沿用固定 DXF，外墙外表面轮廓仍可识别入户通行', async (t) => {
+for(const useScenario of [false,true])test(`节点任务生成候选沿用固定 DXF，外墙外表面轮廓仍可识别入户通行（${useScenario?'场景入口':'兼容入口'}）`, async (t) => {
   const {sessionId,revisionId,brief}=setup(t);
   brief.rooms[0].window='none';
   brief.rooms.push({...room(),id:'room-living',name:'客餐厅',kind:'living',area:{min:20,target:28,max:100},window:'none',sunlight:{...room().sunlight,enabled:false}});
+  // This test covers frozen inputs and physical access, independent of the installed Radiance engine.
+  for(const r of brief.rooms)r.daylight={enabled:false,minIlluminanceLux:300,minAreaRatio:.5,priority:'soft'};
   brief.relations.push({id:'rel-entry-living',from:entranceNodeId('D1'),to:'room-living',kind:'direct',priority:'hard'});
   const initial=loadResidentialBrief(sessionId,revisionId).document;
   const saved=saveResidentialBrief(sessionId,revisionId,{brief,expectedVersion:0,baseModelHash:initial.baseModelHash});
@@ -141,8 +147,9 @@ test('节点任务生成候选沿用固定 DXF，外墙外表面轮廓仍可识�
     emit({type:'text',text:JSON.stringify({schemaVersion:2,rationale:'卧室与入口客餐厅联合分配',roomOrder:['room-main','room-living'],circulation:'auto',preferences:[]})});
     return {failed:false};
   });
+  const reference={baseRevisionId:revisionId,version:1,baseModelHash:saved.baseModelHash};
   const response=await generate({sessionId,provider:'echo',mode:'edit',parentRevisionId:revisionId,
-    residentialBrief:{baseRevisionId:revisionId,version:1,baseModelHash:saved.baseModelHash}});
+    ...(useScenario?{scenario:{id:RESIDENTIAL_SCENARIO.id,version:RESIDENTIAL_SCENARIO.version,input:reference}}:{residentialBrief:reference})});
   const design=response.events.find((e) => e.type==='design');
   assert.ok(design?.type==='design'&&design.valid,JSON.stringify(response.events));
   const candidate=loadDesign(sessionId,'rev-0002')!;
@@ -154,6 +161,19 @@ test('节点任务生成候选沿用固定 DXF，外墙外表面轮廓仍可识�
   assert.ok(reachableFrom(graph,['outside']).has('room-main'));
   const folder=path.join(workspacesDir,sessionId,'designs','rev-0002');
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder,'sunlight.json'),'utf8')).targets,[{spaceIds:['room-main'],minHours:2}]);
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder,'scenario.json'),'utf8')),RESIDENTIAL_SCENARIO);
+});
+
+test('未知场景、错误场景版本及混用新旧请求在调用 Agent 前拒绝',async t=>{
+  const {sessionId,revisionId}=setup(t);let calls=0;
+  t.mock.method(echoAdapter,'run',async()=>{calls++;return {failed:true};});
+  const request={sessionId,provider:'echo',mode:'edit',parentRevisionId:revisionId};
+  for(const scenario of [null,{id:'commercial',version:'1',input:{}},{id:'residential',version:'999',input:{}}]) {
+    assert.equal((await generate({...request,scenario})).status,400);
+  }
+  assert.equal((await generate({...request,scenario:{id:'residential',version:'1',input:{}},residentialBrief:{}})).status,400);
+  assert.equal(calls,0);
+  assert.equal(fs.existsSync(path.join(workspacesDir,sessionId,'designs','rev-0002')),false);
 });
 
 test('同一入户必须直接连接多个房间会提前拒绝，不调用 Agent；逆向关系也检查', async t=> {

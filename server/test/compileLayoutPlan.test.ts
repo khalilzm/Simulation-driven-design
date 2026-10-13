@@ -8,8 +8,8 @@ import { validateStoredDesign } from '../src/model/designValidity';
 import { layoutModel, rectangle } from './helpers/spaceModel';
 import type { LayoutPlanV2 } from '../src/design/layoutPlanTypes';
 import type { SpaceModel } from '@sdd/shared';
-import { pointAlongWallPolyline } from '../src/model/geometry';
-import { segmentOverlap } from '../src/design/regionGeometry';
+import { pointAlongWallPolyline } from '../src/geometry/polygon';
+import { segmentOverlap } from '../src/geometry/regions';
 
 function catalog() {
   const model = layoutModel();

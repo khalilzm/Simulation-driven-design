@@ -10,7 +10,7 @@
 
 | 目录 | 职责 | 状态 |
 | --- | --- | --- |
-| `providers/` | Codex / Claude CLI 适配器与事件归一化 | M0 骨架 |
+| `src/providers/` | Cursor SDK / Codex app-server / Claude CLI / Echo 与事件归一化 | 已实现，见 [接入说明](providers/README.md) |
 | `sessions/` | 会话文件持久化与恢复 | M0 骨架 |
 | `files/` | DXF 上传登记、artifact 受控访问 | 规划（M1） |
 | `browser-bridge/` | handoff 读取、任务记录、结果回传校验与自动续跑 | 规划（M3） |

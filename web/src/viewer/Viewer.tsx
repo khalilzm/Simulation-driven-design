@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ModelDisplayMode, ModelViewMode, ViewerContent } from '../types';
 import { createScene, type ViewerScene } from './Scene';
 import { UsageLegend } from './UsageLegend';
-import { SunlightLegend } from './SunlightLegend';
-import { PedestrianLegend } from './PedestrianLegend';
+import { AnalysisLegend } from './AnalysisLegend';
+import { analysisLayerForView, registeredAnalysisLayers } from './analysisLayers';
 import { pedestrianTMax } from './pedestrianTrajectories';
 
 const PLAYBACK_SPEED = 2; // 模拟秒 → 墙钟秒 的倍率
@@ -17,6 +17,7 @@ export function Viewer({
   embedded = false,
   playbackTime,
   focusSpaceId,
+  onSelectSpace,
 }: {
   content: ViewerContent;
   displayMode: ModelDisplayMode;
@@ -26,8 +27,10 @@ export function Viewer({
   embedded?: boolean;
   playbackTime?: number;
   focusSpaceId?: string | null;
+  onSelectSpace?:(spaceId:string|null)=>void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const pointerDown=useRef<{x:number;y:number}>();
   const sceneRef = useRef<ViewerScene | null>(null);
 
   const [pedTime, setPedTime] = useState(0);
@@ -58,17 +61,13 @@ export function Viewer({
 
   useEffect(() => {
     sceneRef.current?.focusSpace(focusSpaceId ?? null);
-  }, [focusSpaceId]);
+  }, [focusSpaceId, modelContent]);
 
+  const activeLayer = analysisLayerForView(displayMode);
   const showDisplayBar = content.kind === 'model' && !embedded;
-  const sunlight =
-    content.kind === 'model' && displayMode === 'sunlight' && content.sunlight?.status === 'completed'
-      ? content.sunlight
-      : undefined;
-  const pedestrian =
-    content.kind === 'model' && displayMode === 'pedestrian' && content.pedestrian?.status === 'completed'
-      ? content.pedestrian
-      : undefined;
+  const analysisCompleted = content.kind === 'model' && !!activeLayer?.isCompleted(content);
+  const pedestrian = content.kind === 'model' && activeLayer?.id === 'pedestrian' && analysisCompleted
+    ? content.pedestrian : undefined;
   const pedTMax = pedestrian ? pedestrianTMax(pedestrian) : 0;
 
   useEffect(() => {
@@ -112,24 +111,12 @@ export function Viewer({
           >
             平面方案
           </button>
-          <button
-            type="button"
-            className={displayMode === 'sunlight' ? 'active' : ''}
-            onClick={() => onDisplayModeChange('sunlight')}
-            disabled={!content.sunlight || content.sunlight.status !== 'completed'}
-            title={!content.sunlight ? '请先运行日照分析' : undefined}
-          >
-            日照时长
-          </button>
-          <button
-            type="button"
-            className={displayMode === 'pedestrian' ? 'active' : ''}
-            onClick={() => onDisplayModeChange('pedestrian')}
-            disabled={!content.pedestrian || content.pedestrian.status !== 'completed'}
-            title={!content.pedestrian ? '请先运行人流疏散分析' : undefined}
-          >
-            人流疏散
-          </button>
+          {registeredAnalysisLayers().map(layer => <button key={layer.id}
+            type="button" className={displayMode === layer.id ? 'active' : ''}
+            onClick={() => onDisplayModeChange(layer.id)} disabled={!layer.isCompleted(content)}
+            title={!layer.isCompleted(content) ? layer.emptyMessage : undefined}>
+            {layer.label}
+          </button>)}
         </div>
       )}
       {showDisplayBar && displayMode === 'usage' && (
@@ -142,15 +129,11 @@ export function Viewer({
           3D
         </button>
       )}
-      <div className="viewer-canvas" ref={ref} />
+      <div className="viewer-canvas" ref={ref} onPointerDown={e=>{if(e.button===0)pointerDown.current={x:e.clientX,y:e.clientY};}} onPointerUp={e=>{const start=pointerDown.current;pointerDown.current=undefined;if(e.button!==0||viewMode==='3d'||!start||Math.hypot(e.clientX-start.x,e.clientY-start.y)>4)return;const id=sceneRef.current?.pickSpace(e.clientX,e.clientY)??null;onSelectSpace?.(id);}} />
       {!embedded && content.kind === 'model' && displayMode === 'usage' && <UsageLegend model={content.model} />}
-      {!embedded && sunlight && <SunlightLegend result={sunlight} />}
-      {!embedded && pedestrian && <PedestrianLegend result={pedestrian} />}
-      {content.kind === 'model' && displayMode === 'sunlight' && !sunlight && (
-        <div className="viewer-sunlight-empty">运行日照后在此查看房间级时长着色</div>
-      )}
-      {content.kind === 'model' && displayMode === 'pedestrian' && !pedestrian && (
-        <div className="viewer-sunlight-empty">运行疏散后在此查看密度热力图与轨迹</div>
+      {!embedded && content.kind === 'model' && activeLayer && <AnalysisLegend capability={activeLayer.id} content={content} />}
+      {content.kind === 'model' && activeLayer && !analysisCompleted && (
+        <div className="viewer-sunlight-empty">{activeLayer.emptyMessage}</div>
       )}
       {!embedded && pedestrian && pedTMax > 0 && playbackTime === undefined && (
         <div className="pedestrian-playback">
@@ -174,13 +157,11 @@ export function Viewer({
         </div>
       )}
       {!embedded && <div className="viewer-label">
-        {show3d
+        {viewMode === '3d'
           ? '3D 视图（左键平移，右键旋转，滚轮缩放）'
-          : displayMode === 'sunlight'
-            ? 'Honeybee 传感器网格 · Ladybug Ecotect 色标（直射累计小时）'
-            : displayMode === 'pedestrian'
-              ? 'JuPedSim 疏散 · 密度热力图 + 轨迹线（绿→红）+ 圆点回放'
-              : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
+          : activeLayer
+            ? activeLayer.description
+            : 'concetto-viewer — 2D 正交俯视（左键平移，滚轮缩放）'}
       </div>}
     </div>
   );

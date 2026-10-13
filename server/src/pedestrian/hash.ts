@@ -1,7 +1,6 @@
-import { createHash } from 'node:crypto';
 import type { SpaceModel, PedestrianConfig } from '@sdd/shared';
+import { computeEngineInputHash } from '../analysis/runtime/inputHash';
 
-export function computePedestrianInputHash(model: SpaceModel, config: PedestrianConfig, engineVersion: string): string {
-  const payload = JSON.stringify({ model, config, engineVersion });
-  return `sha256:${createHash('sha256').update(payload).digest('hex')}`;
+export function computePedestrianInputHash(model: SpaceModel, config: PedestrianConfig, engineVersion: string, options: { strictGeometry: boolean } = { strictGeometry: false }): string {
+  return computeEngineInputHash('pedestrian', model, config, engineVersion, options);
 }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { closePolygon, findSpaceEdgeNotOnPartition, buildPartitionSegments } from '../src/model/geometry';
+import { closePolygon, findSpaceEdgeNotOnPartition, buildPartitionSegments } from '../src/geometry/polygon';
 import { validateAgentModel } from '../src/model/validateAgent';
 
 test('space 边须落在 floor 或内墙分割线上（几何辅助）', () => {

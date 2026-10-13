@@ -1,21 +1,11 @@
 import type { SpaceModel, Vec2, Wall } from '@sdd/shared';
-import { pointAlongWallPolyline } from '../model/geometry';
+import { pointAlongWallPolyline } from '../geometry/polygon';
 import type { LayoutBoundarySpec, LayoutDoorSpec } from './layoutPlanTypes';
 import { segmentCoveredBy } from './layoutWalls';
-import { sharedSegments } from './regionGeometry';
+import { sharedSegments } from '../geometry/regions';
 
-/** Imported DXF envelopes follow the outer wall face, while openings follow its centerline. */
-export function openingFacesOutside(wall: Wall, a: Vec2, b: Vec2, boundary: Vec2[]): boolean {
-  if (segmentCoveredBy(a,b,sharedSegments(boundary,[a,b]))) return true;
-  if (!wall.analysisProperties?.dxfSourceId) return false;
-  const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-  if (length<1e-9) return false;
-  const nx=-(b[1]-a[1])/length*wall.thickness/2, ny=(b[0]-a[0])/length*wall.thickness/2;
-  return [-1,1].some((side) => {
-    const x: Vec2=[a[0]+nx*side,a[1]+ny*side],y: Vec2=[b[0]+nx*side,b[1]+ny*side];
-    return segmentCoveredBy(x,y,sharedSegments(boundary,[x,y]));
-  });
-}
+export { openingFacesOutside } from '../geometry/openingSides';
+import { openingFacesOutside } from '../geometry/openingSides';
 
 /** 开放边界、落地门洞构成通行图；窗洞不构成通路。 */
 export function validateLayoutAccess(model: SpaceModel, boundaries: LayoutBoundarySpec[], doorSpecs: LayoutDoorSpec[]): string[] {

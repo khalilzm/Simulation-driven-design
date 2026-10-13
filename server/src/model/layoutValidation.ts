@@ -1,7 +1,7 @@
 import type { SpaceModel, Vec2 } from '@sdd/shared';
 import { polygonGeometryError } from '@sdd/shared';
 import { diff, type Geometry, type MultiPolygon, type Polygon } from 'martinez-polygon-clipping';
-import { closePolygon, polygonArea } from './geometry';
+import { closePolygon, polygonArea } from '../geometry/polygon';
 
 function polygons(geometry: Geometry | null): MultiPolygon {
   if (!geometry?.length) return [];

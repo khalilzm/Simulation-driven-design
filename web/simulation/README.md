@@ -1,20 +1,7 @@
-# web/simulation — 浏览器仿真入口
+# 仿真模块说明
 
-职责：在浏览器内执行仿真数值计算。当前不创建返回虚假指标的 Worker；能力注册表中 `sunlight.enabled=false`。
+当前分析在服务端执行：[计划执行器](../../server/src/analysis/runtime/plan.md) 按模块实例选择 daylight、sunlight、pedestrian，再由对应适配器调用 Python。浏览器的 [Viewer](../src/viewer/) 展示结果，工作台组织模型、配置及比较。
 
-依据：[架构 §7/§9](../../docs/architecture.md) 与 [协议](../../docs/protocol.md) 实现。
+住宅当前默认验证室内采光；框架允许其他已实现能力及多个模块实例。能力是否可运行以服务端 status 和输入校验为准。
 
-## 子模块
-
-| 目录 | 职责 | 状态 |
-| --- | --- | --- |
-| `dispatcher/` | 接收分析任务、加载指定版本、启动 Worker、回传结果 | 规划（M3） |
-| `sunlight/` | 日照 Worker：太阳位置、射线遮挡、逐点时长、质量检查 | 规划（M2） |
-| `thermal/` | 热环境能力预留 | 规划（M4） |
-| `acoustics/` | 声环境能力预留 | 规划（M4） |
-
-## 约定
-
-- Worker 执行数值计算，主线程负责渲染；不从渲染阴影图片反推数值。
-- 可复用 Three.js 几何与 BVH 射线查询。
-- 热/声环境当前仅预留契约，未启用求解器。
+本目录只有文档，没有浏览器 Worker 实现。浏览器任务分发、热环境和声学属于规划能力；不能视为已接入的仿真模块。结果身份、缓存和可比性见 [结果身份说明](../../server/src/analysis/runtime/identity.md)。

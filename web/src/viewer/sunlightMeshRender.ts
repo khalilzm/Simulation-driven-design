@@ -1,12 +1,17 @@
-import type { SunlightResult } from '@sdd/shared';
+import type { DaylightResult, SunlightResult } from '@sdd/shared';
 import type { PolygonFill } from './modelRender';
 import { hoursToSunlightColor, resolveSunlightColorScale } from './sunlightColor';
 import { meshFromPlanarFace } from './polygonMesh';
 
 /** Honeybee 传感器网格：每个三角面按 hours 着色 */
 export function sunlightGridsToFills(result: SunlightResult, scale = resolveSunlightColorScale(result)): PolygonFill[] {
+  return valueGridsToFills((result.grids??[]).map(g=>({...g,values:g.hours})),scale);
+}
+export const DAYLIGHT_SCALE={min:0,max:1000,colors:[{r:20,g:30,b:100},{r:0,g:130,b:210},{r:40,g:190,b:140},{r:250,g:220,b:50},{r:250,g:100,b:20}]};
+export function daylightGridsToFills(result:DaylightResult):PolygonFill[]{return valueGridsToFills(result.grids.map(g=>({...g,values:g.lux})),DAYLIGHT_SCALE);}
+function valueGridsToFills(grids:Array<{gridId:string;spaceId:string;vertices:number[][];faces:number[][];values:number[]}>,scale:typeof DAYLIGHT_SCALE):PolygonFill[]{
   const fills: PolygonFill[] = [];
-  for (const grid of result.grids ?? []) {
+  for (const grid of grids) {
     for (let fi = 0; fi < grid.faces.length; fi++) {
       const face = grid.faces[fi];
       if (!face?.length) continue;
@@ -30,7 +35,7 @@ export function sunlightGridsToFills(result: SunlightResult, scale = resolveSunl
       if (area < 0) ring.reverse();
       const mesh = meshFromPlanarFace(ring, z + fi * 0.0001);
       if (!mesh) continue;
-      const h = grid.hours[fi] ?? 0;
+      const h = grid.values[fi] ?? 0;
       // 与 SunlightLegend 同一套 Ecotect 插值，避免 faceColors 与图例条肉眼不一致
       const color = hoursToSunlightColor(h, scale);
       fills.push({

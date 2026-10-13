@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import type { OptimizationEvaluation } from '@sdd/shared';
 import { compareCandidate } from '../src/optimization/evaluate';
 import { evaluation } from './helpers/optimization';
+import { optimizationModel } from './helpers/optimization';
+import { createResultIdentity } from '../src/analysis/runtime/identity';
 
 test('统一评价层：改善候选五层全过', () => {
   const a = compareCandidate(evaluation(), evaluation(18));
@@ -43,7 +45,8 @@ test('无改善：可比且约束满足，但目标不满足', () => {
 });
 
 test('功能交换：目标随 allocationId 迁移，未达目标对象可让渡日照', () => {
-  const base: OptimizationEvaluation = { scenarioHash: 's',
+  const context=structuredClone(evaluation().identity!.context);for(const module of context.modules)module.engineVersion='v';
+  const base: OptimizationEvaluation = { identity:createResultIdentity(optimizationModel(),context),scenarioHash: 's',
     sunlight: { taskId: 'sun', inputHash: 'h', engineVersion: 'v', targetAreaRatio: 0.7, spaces: [],
       allocations: [
         { allocationId: 'bedroom', spaceIds: ['X'], sensorCount: 10, sampledArea: 100, meanHours: 1.2, minHours: 0, maxHours: 3, targetMetRatio: 0.4 },

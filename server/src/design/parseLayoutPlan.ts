@@ -1,5 +1,5 @@
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
+import { closePolygon } from '../geometry/polygon';
 import type { LayoutBoundarySpec, LayoutPlanV2, LayoutSpaceSpec } from './layoutPlanTypes';
 import {
   buildFloorPlanTopology,

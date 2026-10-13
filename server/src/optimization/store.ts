@@ -1,11 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { createHash } from 'node:crypto';
+import { legacyStorageHash } from '../analysis/runtime/identity';
 import type { OptimizationRun, SpaceModel } from '@sdd/shared';
 import { workspacesDir } from '../config';
 
 export const liveOptimizationRuns = new Set<string>();
-export const hashValue = (value: unknown): string => `sha256:${createHash('sha256').update(JSON.stringify(value)).digest('hex')}`;
+export const hashValue = legacyStorageHash;
 export const validSessionId = (id: unknown): id is string => typeof id === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(id);
 export const validRevisionId = (id: unknown): id is string => typeof id === 'string' && /^rev-\d+$/.test(id);
 

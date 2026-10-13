@@ -1,5 +1,5 @@
 import type { OutlineContext } from '../spacePrompt';
-import { closePolygon, outlineBBox } from '../model/geometry';
+import { closePolygon, outlineBBox } from '../geometry/polygon';
 
 /** intent.json 的 JSON 示例（有/无固定轮廓两种首轮共用）。 */
 const INTENT_EXAMPLE = `{

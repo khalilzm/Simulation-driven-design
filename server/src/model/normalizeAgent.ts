@@ -1,5 +1,5 @@
 import type { SpaceModel } from '@sdd/shared';
-import { closePolygon } from './geometry';
+import { closePolygon } from '../geometry/polygon';
 import { inferSpaceTypes } from './inferSpaceTypes';
 
 /** 校验前规范化 Agent 几何（补闭合点、推断 spaceTypes） */

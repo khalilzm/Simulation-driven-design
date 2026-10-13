@@ -1,5 +1,5 @@
 import { polygonGeometryError, type Floor, type SpaceModel, type Unit, type Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
+import { closePolygon } from '../geometry/polygon';
 
 /** 布局编译上下文：固定轮廓与父方案，不含 x 条带 region 分解。 */
 export interface LayoutContext {

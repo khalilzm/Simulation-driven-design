@@ -1,5 +1,5 @@
 import { resolveSpaceLabel, type Diagnosis, type OptimizationEvaluation, type OptimizationRun, type SpaceModel } from '@sdd/shared';
-import { buildSpatialGraph, unreachableSpaces, type SpatialGraph } from '../design/spatialGraph';
+import { buildSpatialGraph, unreachableSpaces, type SpatialGraph } from '../geometry/spatialGraph';
 
 function spaceLabel(model: SpaceModel, spaceId: string): string {
   const space = model.spaces.find((s) => s.id === spaceId);

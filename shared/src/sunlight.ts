@@ -77,6 +77,17 @@ export interface SunlightSensorGridMesh {
   faceColors?: string[];
 }
 
+export interface SunlightSampling {
+  method: string;
+  status: 'converged' | 'needs_review';
+  baseGridSpacing?: number;
+  baseFineStep?: number;
+  refinedFineStep?: number;
+  ratioTolerance?: number;
+  meanHoursTolerance?: number;
+  rooms: {allocationId:string;status:'converged'|'needs_review';reason?:string|null;baseTargetRatio?:number|null;refinedTargetRatio?:number|null;meanHoursDelta?:number|null;targetRatioDelta?:number|null;positiveAreaRatioDelta?:number|null}[];
+}
+
 export interface SunlightResult {
   schemaVersion: string;
   status: 'completed' | 'failed';
@@ -93,6 +104,7 @@ export interface SunlightResult {
   targets?: SunlightTargetCheck[];
   /** Honeybee SensorGrid 网格与逐面累计直射小时（Ladybug 色标） */
   grids?: SunlightSensorGridMesh[];
+  sampling?: SunlightSampling;
   legend?: { colorSet: string; legendParameters?: Record<string, unknown> };
   verification: {
     status: SunlightVerificationStatus;

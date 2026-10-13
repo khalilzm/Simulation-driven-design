@@ -7,6 +7,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   plugins: [react()],
+  // Keep Vite's ?url asset imports out of esbuild's dependency pre-bundle.
+  optimizeDeps: { exclude: ['@tldraw/assets'] },
   resolve: {
     alias: {
       '@sdd/shared': path.resolve(here, '../shared/src/index.ts'),

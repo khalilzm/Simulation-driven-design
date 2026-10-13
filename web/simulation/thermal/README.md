@@ -2,7 +2,7 @@
 
 职责：热环境能力命名、输入输出边界与执行器接口预留；求解器未启用，不生成假指标。
 
-对应文档：[架构 §9](../docs/architecture.md)、[roadmap M4](../../docs/roadmap.md)。
+对应文档：[架构 §9](../../../docs/architecture.md)、[roadmap M4](../../../docs/roadmap.md)。
 
 ## 契约
 

@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { createResidentialBrief, type RoomKind, type RoomRequirement } from '@sdd/shared';
 import { parseFixedEnvelopeDxf } from '../src/dxf/fixedEnvelope';
-import { parseResidentialStrategy, type PartitionStrategy } from '../src/design/residentialStrategy';
-import { solveResidentialLayout } from '../src/design/residentialSolver';
+import { parseResidentialStrategy, type PartitionStrategy } from '../src/scenarios/residential/residentialStrategy';
+import { solveResidentialLayout } from '../src/scenarios/residential/residentialSolver';
 import { validateAgentModel } from '../src/model/validateAgent';
 import { validateModel } from '../src/model/validate';
-import { buildSpatialGraph, reachableFrom } from '../src/design/spatialGraph';
+import { buildSpatialGraph, reachableFrom } from '../src/geometry/spatialGraph';
 const fixture=fs.readFileSync(new URL('../../examples/inputs/residential-fixed-envelope/residential-fixed-envelope.dxf',import.meta.url),'utf8');
 const leaf=(roomId:string):PartitionStrategy=>({roomId});
 const split=(axis:'x'|'y',first:PartitionStrategy,second:PartitionStrategy):PartitionStrategy=>({axis,first,second});
@@ -59,7 +59,7 @@ test('住宅两居的多房间策略落地，全部房间具有公共入户路�
 test('Agent 策略失败后收到求解报告，重新分组；禁止直接几何及拒绝残留模型',async t=> {
   const {base,brief}=setup();brief.rooms[0].allowThrough=true;brief.rooms[0].area.max=100;
   const strategy={schemaVersion:2,rationale:'公共入口空间',roomOrder:brief.rooms.map(r=>r.id),circulation:'auto',preferences:[]};
-  const {runResidentialTurn}=await import('../src/design/runResidentialTurn');
+  const {runResidentialTurn}=await import('../src/scenarios/residential/runResidentialTurn');
   const os=await import('node:os');const path=await import('node:path');
   const cwd=fs.mkdtempSync(path.join(os.tmpdir(),'sdd-strategy-'));t.after(()=>fs.rmSync(cwd,{recursive:true,force:true}));
   const document={brief,version:1,baseModelHash:'fixture',updatedAt:''};
@@ -107,7 +107,7 @@ test('六房间策略含交通区偏好可求解；入口、窗和硬关系在�
 test('拒绝的切分保存几何与原因，不能通过改变入口目标刷过校验',async()=> {
   const {base,brief,strategy}=setup();
   brief.relations=[{id:'rel-entry',from:'entrance:D1',to:'room-main',kind:'direct',priority:'hard'}];
-  const {ResidentialSolveError}=await import('../src/design/residentialSolver');
+  const {ResidentialSolveError}=await import('../src/scenarios/residential/residentialSolver');
   assert.throws(()=>solveResidentialLayout(base,brief,strategy,'rev-0002'),(error:unknown)=> {
     assert.ok(error instanceof ResidentialSolveError);
     const regions=error.report.rejectedRegions as {geometry:unknown;reason:string}[];

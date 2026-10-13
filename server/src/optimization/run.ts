@@ -14,6 +14,9 @@ import { compareCandidate, recommendCandidate } from './evaluate';
 import { applyDesignPatch, candidatePartitionOffsets, candidatePatches, candidateProgramSwaps, candidateWindowPatches, validateOptimizationModel } from './patch';
 import { planPatches } from './planner';
 import { evaluateModel, type EvaluateModel } from './simulate';
+import { optimizationAnalysisPlan } from './analysisPlan';
+import { optimizationResultIdentity, optimizationEvidenceMatchesIdentity } from './resultIdentity';
+import { sameCachedResult } from '../analysis/runtime/identity';
 import { hashValue, liveOptimizationRuns, loadCandidateModel, loadOptimization, optimizationDir,
   saveOptimization, validRevisionId, validSessionId, writeJson } from './store';
 
@@ -78,7 +81,8 @@ export function prepareOptimization(request: OptimizationRequest, suppliedConfig
   const now = new Date().toISOString();
   const run: OptimizationRun = { schemaVersion: '1', id: randomUUID(), sessionId: request.sessionId,
     baseRevisionId: request.revisionId, baseModelHash: hashValue(model), scenarioHash: hashValue(configs),
-    createdAt: now, updatedAt: now, status: 'baseline', request, policy: OPTIMIZATION_POLICY, configs, candidates: [] };
+    createdAt: now, updatedAt: now, status: 'baseline', request, policy: OPTIMIZATION_POLICY, configs,
+    analysisPlan: optimizationAnalysisPlan(configs), candidates: [] };
   return { run, model };
 }
 
@@ -95,7 +99,9 @@ export async function runOptimization(run: OptimizationRun, model: SpaceModel,
     snapshot();
     signal.throwIfAborted();
     progress(deps.baseline ? '复用同一模型与工况下的现状分析' : '建立基线：沿用当前日照工况、人数与随机种子');
-    run.baseline = deps.baseline ?? await evaluate(model, run, signal, progress);
+    const expectedIdentity = optimizationResultIdentity(model, run);
+    run.baseline = deps.baseline && sameCachedResult(deps.baseline.identity, expectedIdentity) ? deps.baseline
+      : { ...await evaluate(model, run, signal, progress), identity: expectedIdentity };
     signal.throwIfAborted();
 
     let currentModel = model;
@@ -151,7 +157,7 @@ export async function runOptimization(run: OptimizationRun, model: SpaceModel,
           seenHashes.add(childHash);
           candidate.modelHash = childHash;
           writeJson(path.join(optimizationDir(run.sessionId, run.id), `${candidate.id}.json`), child);
-          candidate.evaluation = await evaluate(child, run, signal, progress);
+          candidate.evaluation = { ...await evaluate(child, run, signal, progress), identity: optimizationResultIdentity(child, run) };
           signal.throwIfAborted();
           candidate.assessment = compareCandidate(run.baseline, candidate.evaluation);
           candidate.status = candidate.assessment.eligible ? 'completed' : 'rejected';
@@ -210,6 +216,11 @@ export function adoptOptimization(sessionId: string, runId: string, candidateId:
     throw new Error('基线模型或仿真设置已变化，请重新优化后采用');
   }
   const model = loadCandidateModel(run, candidateId);
+  if (!run.baseline || !optimizationEvidenceMatchesIdentity(run.baseline) || !optimizationEvidenceMatchesIdentity(candidate.evaluation)
+    || !sameCachedResult(run.baseline.identity, optimizationResultIdentity(current.model, run))
+    || !sameCachedResult(candidate.evaluation.identity, optimizationResultIdentity(model, run))) {
+    throw new Error('评价身份缺失或输入、场景、规则、计划、引擎版本已变化，请重新评价后采用');
+  }
   const lineage = candidate.lineage ?? [candidate.patch];
   if (hashValue(lineage.reduce((m, p) => applyDesignPatch(m, p), current.model)) !== candidate.modelHash) {
     throw new Error('候选不再匹配已验证的局部修改');

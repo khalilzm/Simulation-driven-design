@@ -1,5 +1,6 @@
 import { OPTIMIZATION_POLICY, patchSortValue, type EvaluationCategory, type EvaluationCheck,
   type OptimizationAssessment, type OptimizationCandidate, type OptimizationEvaluation } from '@sdd/shared';
+import { comparableIdentities, identityEngineVersionsMatch } from '../analysis/runtime/identity';
 
 interface SunlightRow {
   id: string;
@@ -32,6 +33,10 @@ export function compareCandidate(base: OptimizationEvaluation, next: Optimizatio
     checks.push({ category, passed, message });
 
   // 输入适用（可比性）
+  add('applicability', comparableIdentities(base.identity, next.identity), '结果身份完整且场景、规则、输入版本和分析计划一致');
+  const matches = (evaluation: OptimizationEvaluation) => identityEngineVersionsMatch(evaluation.identity,
+    {sunlight:evaluation.sunlight.engineVersion,pedestrian:evaluation.pedestrian.engineVersion});
+  add('applicability', matches(base) && matches(next), '结果报告的引擎版本与身份声明一致');
   add('applicability', base.scenarioHash === next.scenarioHash, '仿真工况一致');
   add('applicability', base.sunlight.engineVersion === next.sunlight.engineVersion
     && base.pedestrian.engineVersion === next.pedestrian.engineVersion, '仿真引擎版本一致');

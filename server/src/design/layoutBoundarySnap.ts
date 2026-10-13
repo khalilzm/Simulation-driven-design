@@ -1,8 +1,8 @@
 import type { Vec2 } from '@sdd/shared';
-import { closePolygon } from '../model/geometry';
+import { closePolygon } from '../geometry/polygon';
 import type { LayoutBoundarySpec, LayoutSpaceSpec } from './layoutPlanTypes';
 import { segmentCoveredBy } from './layoutWalls';
-import { sharedSegments } from './regionGeometry';
+import { sharedSegments } from '../geometry/regions';
 
 function dot(a: Vec2, b: Vec2): number {
   return a[0] * b[0] + a[1] * b[1];

@@ -1,3 +1,4 @@
+import { residentialScenario } from '../scenarios/residential';
 import fs from 'node:fs';
 import path from 'node:path';
 import { workspacesDir } from '../config';
@@ -19,6 +20,14 @@ import {
 } from '../model/store';
 
 export const designsRouter = Router();
+
+designsRouter.get('/designs/:sessionId/:revisionId/residential-evaluation', (req,res)=>{
+  try{res.json(residentialScenario.loadEvaluation(req.params.sessionId,req.params.revisionId));}catch(e){res.status(409).json({error:e instanceof Error?e.message:String(e)});}
+});
+designsRouter.post('/designs/:sessionId/:revisionId/residential-evaluation', async(req,res)=>{
+  const controller=new AbortController();const stop=()=>{if(!res.writableEnded)controller.abort(new Error('日照评价已取消'));};res.on('close',stop);
+  try{const result=await residentialScenario.runEvaluation(req.params.sessionId,req.params.revisionId,controller.signal);if(!res.destroyed)res.json(result);}catch(e){if(!res.destroyed)res.status(409).json({error:e instanceof Error?e.message:String(e)});}finally{res.off('close',stop);}
+});
 
 designsRouter.get('/designs/:sessionId/:revisionId/residential-solver', (req,res)=>{
   const {sessionId,revisionId}=req.params;

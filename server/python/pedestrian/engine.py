@@ -10,7 +10,8 @@ from shapely.geometry import LineString, Point, Polygon
 from shapely.ops import unary_union
 
 EPS = 1e-6
-ENGINE_ID = "jupedsim-1.4"
+# Adapter/result protocol version; the solver package version is independent.
+ENGINE_ID = "jupedsim-egress@1"
 
 
 def _ring_polygon(ring: List[List[float]]) -> Polygon:

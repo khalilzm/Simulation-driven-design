@@ -14,7 +14,7 @@ import {
   polygonContainedInPolygon,
   polygonEdgesContainedInPolygon,
   polylineContainedInPolygon,
-} from './geometry';
+} from '../geometry/polygon';
 import { wallPolylineLength } from '../design/layoutWalls';
 import { parseComponentTypesField } from './parseComponentTypes';
 import { parseSpaceTypesField } from './parseSpaceTypes';

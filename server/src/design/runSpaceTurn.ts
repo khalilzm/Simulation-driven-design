@@ -15,12 +15,14 @@ import { buildIntentPrompt, buildIntentOnlyPrompt } from './spaceAgentPrompts';
 import { ensureAgentIntentFile, ensureAgentLayoutFile, intentRelativePath, layoutRelativePath } from './resolveAgentLayout';
 import { parseDesignIntent } from './intent';
 import { compileIntent, deriveOutline } from './layoutIntent';
-import { runResidentialTurn } from './runResidentialTurn';
+import { resolveScenarioTurn } from '../scenarios/legacy';
+import type { PreparedScenarioGeneration } from '../scenarios/types';
 
 interface SpaceTurnInput {
-  cwd: string; revisionId: string; message: string; outline: OutlineContext;
+  cwd: string; revisionId: string; message: string; outline: OutlineContext; sessionId?: string;
   nativeSessionId?: string; model?: string; requireDesign?: boolean;
   residentialBrief?: ResidentialBriefDocument;
+  scenario?: PreparedScenarioGeneration;
 }
 
 const LAYOUT_ATTEMPTS = 3;
@@ -59,10 +61,8 @@ function failNoDeliverable(
 export async function runSpaceTurn(input: SpaceTurnInput, adapter: ProviderAdapter,
   emit: (event: StreamEvent) => void, signal?: AbortSignal): Promise<TurnResult> {
   const { cwd, revisionId } = input;
-  if (input.residentialBrief) {
-    if (!input.outline.currentModel) throw new Error('住宅策略生成缺少固定底图');
-    return runResidentialTurn({ cwd, revisionId, model: input.model, residentialBrief: input.residentialBrief, base: input.outline.currentModel }, adapter, emit, signal);
-  }
+  const scenario = resolveScenarioTurn(input.scenario, input.residentialBrief, input.outline.currentModel);
+  if (scenario) return scenario.generate({ cwd, revisionId, sessionId: input.sessionId, model: input.model }, adapter, emit, signal);
   const folder = path.join(cwd, 'designs', revisionId);
   const layoutPath = path.join(folder, 'layout.json');
   const intentPath = path.join(folder, 'intent.json');

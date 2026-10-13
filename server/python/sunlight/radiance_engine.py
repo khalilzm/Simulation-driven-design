@@ -7,11 +7,11 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from hb_build import build_honeybee_model, sensor_space_ids
-from grid_pack import make_legend, pack_grid_with_attribution, grid_sensor_areas
+from grid_pack import make_legend, pack_grid_with_attribution, pack_grids_with_hours, grid_sensor_areas
 from sunlight_metrics import package_results
 from wea_from_config import build_wea
 
-ENGINE_ID = "lbt-direct-sun-hours@2"
+ENGINE_ID = "lbt-direct-sun-hours@4"
 
 
 def _radiance_on_path() -> bool:
@@ -114,8 +114,9 @@ def run_radiance_recipe(model: Dict[str, Any], config: Dict[str, Any], output_di
 
     legend, legend_par = make_legend(config)
     grid = grids[0]
-    space_ids = sensor_space_ids(model, grid.sensors)
-    grid_exports = pack_grid_with_attribution(grid, space_ids, flat, legend_par)
+    residential = bool(model.get("model", {}).get("residentialBrief"))
+    space_ids = [g.room_identifier for g in grids for _ in g.sensors] if residential else sensor_space_ids(model, grid.sensors)
+    grid_exports = pack_grids_with_hours(grids,flat,legend_par) if residential else pack_grid_with_attribution(grid, space_ids, flat, legend_par)
 
     result = package_results(
         space_ids, flat, grid_sensor_areas(grids, model), config, ENGINE_ID, model.get("spaces", []),

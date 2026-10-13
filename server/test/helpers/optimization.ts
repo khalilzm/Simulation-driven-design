@@ -1,5 +1,7 @@
 import type { OptimizationEvaluation, OptimizationRequest, SpaceModel, SunlightConfig, PedestrianConfig } from '@sdd/shared';
 import { layoutModel, rectangle } from './spaceModel';
+import { optimizationResultIdentity } from '../../src/optimization/resultIdentity';
+import { sunlightEngineId, pedestrianEngineId } from '../../src/config';
 
 export function optimizationModel(): SpaceModel {
   const model = layoutModel();
@@ -45,8 +47,9 @@ export function optimizationRequest(sessionId: string): OptimizationRequest {
 }
 
 export function evaluation(duration = 20): OptimizationEvaluation {
-  return { scenarioHash: 'scenario', sunlight: { taskId: 'sun', inputHash: 'sun-hash', engineVersion: 'sun-v1',
+  return { identity: optimizationResultIdentity(optimizationModel(), {sessionId:'test',baseRevisionId:'rev-0001',configs:{sunlight:optimizationSunlight,pedestrian:optimizationPedestrian}}),
+    scenarioHash: 'scenario', sunlight: { taskId: 'sun', inputHash: 'sun-hash', engineVersion: sunlightEngineId,
     targetAreaRatio: 0.5, spaces: ['roomA', 'roomB'].map((spaceId) => ({
       spaceId, sensorCount: 25, sampledArea: 100, meanHours: 1, minHours: 0, maxHours: 2, targetMetRatio: 0.5,
-    })) }, pedestrian: { taskId: 'ped', inputHash: 'ped-hash', engineVersion: 'ped-v1', totalAgents: 30, egressTimeSec: duration } };
+    })) }, pedestrian: { taskId: 'ped', inputHash: 'ped-hash', engineVersion: pedestrianEngineId, totalAgents: 30, egressTimeSec: duration } };
 }

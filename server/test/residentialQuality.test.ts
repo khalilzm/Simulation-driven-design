@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { SpaceModel, Vec2, Wall } from '@sdd/shared';
-import { assessRoomQuality, doorApron, structuralGapErrors, swingFootprint, swingCollision } from '../src/design/residentialQuality';
-import { rectangle } from '../src/design/regionGeometry';
+import { assessRoomQuality, doorApron, structuralGapErrors, swingFootprint, swingCollision } from '../src/scenarios/residential/residentialQuality';
+import { rectangle } from '../src/geometry/regions';
 const wall=(id:string,x:number,fixed=false):Wall=>({id,geometry:{type:'polyline',points:[[x,.2],[x,3]]},thickness:fixed?.2:.12,height:3,fixed,role:fixed?'structural':'partition'});
 
 test('56cm承重墙夹缝拒绝；对齐承重墙或留下充分净宽通过',()=> {

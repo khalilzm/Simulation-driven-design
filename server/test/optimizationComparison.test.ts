@@ -8,6 +8,7 @@ import { workspacesDir } from '../src/config';
 import { saveDesign } from '../src/model/store';
 import { loadOptimizationComparison } from '../src/optimization/comparison';
 import { compareCandidate } from '../src/optimization/evaluate';
+import { optimizationResultIdentity } from '../src/optimization/resultIdentity';
 import { widenDoor } from '../src/optimization/patch';
 import { adoptOptimization, prepareOptimization } from '../src/optimization/run';
 import { hashValue, optimizationDir, saveOptimization, writeJson } from '../src/optimization/store';
@@ -22,6 +23,7 @@ import { evaluation, optimizationModel, optimizationRequest, optimizationSunligh
 /** Saved synthetic artifacts exercise the read/compare path without starting either engine. */
 function persistAnalysis(run: OptimizationRun, model: SpaceModel, duration: number, maximum: number) {
   const evidence = evaluation(duration);
+  evidence.identity = optimizationResultIdentity(model, run);
   evidence.scenarioHash = run.scenarioHash;
   evidence.sunlight.taskId = randomUUID(); evidence.pedestrian.taskId = randomUUID();
   evidence.sunlight.inputHash = computeSunlightInputHash(model, run.configs.sunlight, evidence.sunlight.engineVersion);

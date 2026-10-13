@@ -1,8 +1,6 @@
-import { createHash } from 'node:crypto';
-import type { SpaceModel } from '@sdd/shared';
-import type { SunlightConfig } from '@sdd/shared';
+import type { SpaceModel, SunlightConfig } from '@sdd/shared';
+import { computeEngineInputHash } from '../analysis/runtime/inputHash';
 
 export function computeSunlightInputHash(model: SpaceModel, config: SunlightConfig, engineVersion: string): string {
-  const payload = JSON.stringify({ model, config, engineVersion });
-  return `sha256:${createHash('sha256').update(payload).digest('hex')}`;
+  return computeEngineInputHash('sunlight', model, config, engineVersion);
 }

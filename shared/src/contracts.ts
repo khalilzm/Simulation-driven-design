@@ -1,6 +1,6 @@
 // 能力注册表与提供方契约（对齐 docs/architecture.md §9）
 
-export type ProviderId = 'cursor' | 'claude' | 'echo';
+export type ProviderId = 'cursor' | 'codex' | 'claude' | 'echo';
 
 export interface ProviderInfo {
   id: ProviderId;
@@ -17,6 +17,12 @@ export const PROVIDERS: ProviderInfo[] = [
     requiresLogin: true,
   },
   {
+    id: 'codex',
+    label: 'Codex（本机）',
+    description: '复用本机 Codex 的 ChatGPT 登录和模型配置，自动运行独立任务',
+    requiresLogin: true,
+  },
+  {
     id: 'claude',
     label: 'Claude',
     description: 'Anthropic Claude Code CLI，需本机已登录',
@@ -30,7 +36,7 @@ export const PROVIDERS: ProviderInfo[] = [
   },
 ];
 
-export type CapabilityId = 'sunlight' | 'thermal' | 'acoustics' | 'pedestrian';
+export type CapabilityId = 'daylight' | 'sunlight' | 'thermal' | 'acoustics' | 'pedestrian';
 
 export interface Capability {
   id: CapabilityId;
@@ -41,6 +47,13 @@ export interface Capability {
 }
 
 export const CAPABILITIES: Capability[] = [
+  {
+    id: 'daylight',
+    enabled: true,
+    executor: 'engine',
+    input: '门窗、材料、标准阴天天空、评价面与房间目标',
+    output: '室内照度、采光系数与房间达标面积比例',
+  },
   {
     id: 'sunlight',
     enabled: true,

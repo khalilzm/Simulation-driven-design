@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { parseDesignIntent } from '../src/design/intent';
 import { createLayoutContext } from '../src/design/layoutContext';
 import { compileIntent } from '../src/design/layoutIntent';
-import { polygonArea } from '../src/model/geometry';
-import { sharedSegments } from '../src/design/regionGeometry';
+import { polygonArea } from '../src/geometry/polygon';
+import { sharedSegments } from '../src/geometry/regions';
 
 function outline(width: number, height: number): string {
   return JSON.stringify({ boundary: [[0, 0], [width, 0], [width, height], [0, height], [0, 0]], origin: [0, 0], units: 'm' });

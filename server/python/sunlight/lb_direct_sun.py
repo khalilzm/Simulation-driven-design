@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any, Dict, List, Tuple
 
 from honeybee.model import Model
-from grid_pack import make_legend, pack_grid_with_attribution, grid_sensor_areas
+from grid_pack import make_legend, pack_grid_with_attribution, pack_grids_with_hours, grid_sensor_areas
 from hb_build import build_honeybee_model, sensor_space_ids
 from sunlight_metrics import package_results
 from sunlight_time import sun_intervals
@@ -14,7 +14,7 @@ Vec3 = Tuple[float, float, float]
 Triangle = Tuple[Vec3, Vec3, Vec3]
 
 # LB Direct Sun Hours 同款太阳/遮挡逻辑（无 Radiance）；着色走 Ladybug Legend
-ENGINE_ID = "ladybug-lb-direct-sun-hours@3"
+ENGINE_ID = "ladybug-lb-direct-sun-hours@5"
 
 
 def _shade_triangles(hb: Model) -> List[Triangle]:
@@ -82,11 +82,9 @@ def run_honeybee_direct_sun(
     if not grids:
         return _fail("Honeybee 未生成任何 SensorGrid")
 
-    grid = grids[0]
-    space_ids = sensor_space_ids(model, grid.sensors)
-    all_sensors: List[Tuple[str, str, Vec3]] = [
-        (space_ids[i], grid.identifier, sens.pos) for i, sens in enumerate(grid.sensors)
-    ]
+    residential = bool(model.get("model", {}).get("residentialBrief"))
+    space_ids = [g.room_identifier for g in grids for _ in g.sensors] if residential else sensor_space_ids(model, grids[0].sensors)
+    all_sensors = [(space_ids[i], "", sens.pos) for i,sens in enumerate(s for g in grids for s in g.sensors)]
 
     triangles = _shade_triangles(hb)
     hours: List[float] = [0.0] * len(all_sensors)
@@ -99,7 +97,7 @@ def run_honeybee_direct_sun(
                     hours[i] += duration_hours
 
     legend, legend_par = make_legend(config)
-    grid_exports = pack_grid_with_attribution(grid, space_ids, hours, legend_par)
+    grid_exports = pack_grids_with_hours(grids,hours,legend_par) if residential else pack_grid_with_attribution(grids[0], space_ids, hours, legend_par)
 
     result = package_results(
         space_ids, hours, grid_sensor_areas(grids, model),

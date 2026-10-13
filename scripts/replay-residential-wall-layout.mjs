@@ -1,0 +1,52 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import sharp from 'sharp';
+import { resolveWallJunctions } from '../shared/src/index.ts';
+import { parseFixedEnvelopeDxf } from '../server/src/dxf/fixedEnvelope.ts';
+import { assessResidentialQuality } from '../server/src/scenarios/residential/residentialSolver.ts';
+import { solveResidentialGrid } from '../server/src/scenarios/residential/residentialGrid.ts';
+import { largestRoomRectangle } from '../server/src/scenarios/residential/publicSpaceQuality.ts';
+import { validateModel } from '../server/src/model/validate.ts';
+import { validateAgentModel } from '../server/src/model/validateAgent.ts';
+import { validateResidentialCandidate } from '../server/src/scenarios/residential/residentialBrief.ts';
+
+// Isolated review artifacts; never overwrite an accepted session or call a model provider.
+const fixture=JSON.parse(fs.readFileSync(new URL('../server/test/fixtures/residential-protruding-wall.json',import.meta.url),'utf8'));
+const base=parseFixedEnvelopeDxf(fs.readFileSync(new URL('../examples/inputs/residential-fixed-envelope/residential-fixed-envelope.dxf',import.meta.url),'utf8'),'fixed.dxf');
+base.model.revisionId='rev-0001';
+const beforeModel=process.argv[3]?JSON.parse(fs.readFileSync(process.argv[3],'utf8')):fixture.model;
+const before=assessResidentialQuality(beforeModel,fixture.brief,{},true);
+const started=Date.now(),after=solveResidentialGrid(base,fixture.brief,fixture.strategy,'rev-0020');
+const errors=[...validateModel(after.model).errors,...validateAgentModel(after.model).errors,...validateResidentialCandidate(after.model,base,{brief:fixture.brief,version:1,baseModelHash:'fixture',updatedAt:''})];
+if(errors.length)throw new Error(errors.join('; '));
+const out=path.resolve(process.argv[2]??'workspaces/wall-layout-review');fs.mkdirSync(out,{recursive:true});
+fs.writeFileSync(path.join(out,'before-quality.json'),JSON.stringify(before,null,2));
+fs.writeFileSync(path.join(out,'before-model.json'),JSON.stringify(beforeModel,null,2));
+fs.writeFileSync(path.join(out,'after-model.json'),JSON.stringify(after.model,null,2));
+fs.writeFileSync(path.join(out,'after-report.json'),JSON.stringify(after.report,null,2));
+const metrics=q=>({unexplainedWallLength:q.structuralWalls.unexplainedLength,alignmentOffset:q.wallAlignment.totalOffset,alignmentSteps:q.wallAlignment.steps.length,structuralConnectionMismatches:q.structuralConnections.mismatchCount,publicCoreArea:q.publicSpaces[0].coreArea,publicCoreRatio:q.publicSpaces[0].coreRatio});
+const summary={before:metrics(before),after:metrics(after.report.quality),solverMs:Date.now()-started,searchVisits:after.report.searchVisits,candidateCount:after.report.candidateCount,searchLimitReached:after.report.searchLimitReached,validationErrors:errors};
+fs.writeFileSync(path.join(out,'comparison.json'),JSON.stringify(summary,null,2));
+const esc=s=>String(s).replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('"','&quot;');
+const panels=[{model:beforeModel,quality:before,title:process.argv[3]?'调整前':'原方案'},{model:after.model,quality:after.report.quality,title:process.argv[3]?'调整后':'优化方案'}];
+const drawing=panels.map(({model,quality,title},index)=>{
+  const ox=45+index*665,oy=105,scale=50;
+  const pt=p=>`${ox+p[0]*scale},${oy+(9-p[1])*scale}`;
+  const roomFills=model.spaces.map(s=>`<polygon points="${s.boundary.map(pt).join(' ')}" fill="${model.spaceTypes.find(t=>t.id===s.typeId)?.color??'#e6e6e0'}" fill-opacity=".55"/>`).join('');
+  const cores=quality.publicSpaces.map(s=>`<polygon points="${s.coreBoundary.map(pt).join(' ')}" fill="#b8e4c1" fill-opacity=".6" stroke="#49935a" stroke-width="2" stroke-dasharray="7 5"/>`).join('');
+  const junctions=resolveWallJunctions(model.walls);
+  const walls=model.walls.map(w=>`<polygon points="${(junctions.get(w.id)??[]).map(pt).join(' ')}" fill="${w.fixed?'#29483f':'#92958e'}"/>`).join('');
+  const highlights=quality.structuralWalls.walls.flatMap(w=>w.intervals.filter(i=>i.status==='same_space').map(i=>`<polyline points="${i.segment.map(pt).join(' ')}" stroke="#cf4937" stroke-width="13" fill="none"/>`)).join('');
+  const steps=quality.wallAlignment.steps.map(s=>`<polyline points="${s.segment.map(pt).join(' ')}" stroke="#397da8" stroke-width="10" fill="none"/>`).join('');
+  const joins=quality.structuralConnections.connections.filter(c=>c.kind==='continuation').map(c=>`<circle cx="${ox+c.point[0]*scale}" cy="${oy+(9-c.point[1])*scale}" r="8" fill="none" stroke="${c.aligned?'#4f9360':'#b85991'}" stroke-width="3"/>`).join('');
+  const labels=model.spaces.map(s=>{
+    const core=largestRoomRectangle(s.boundary).boundary;if(!core.length)return '';
+    const x=(core[0][0]+core[2][0])/2,y=(core[0][1]+core[2][1])/2;
+    return `<text x="${ox+x*scale}" y="${oy+(9-y)*scale}" font-size="18" text-anchor="middle" fill="#49574e">${esc(s.usage)}</text>`;
+  }).join('');
+  return `<text x="${ox}" y="50" font-size="28" font-weight="600">${title}</text><text x="${ox}" y="80" font-size="17">承重墙续接问题 ${quality.structuralConnections.mismatchCount}处 · 台阶 ${quality.wallAlignment.totalOffset.toFixed(2)}m · 主体占比 ${(quality.publicSpaces[0].coreRatio*100).toFixed(0)}%</text>${roomFills}${cores}${walls}${highlights}${steps}${joins}${labels}`;
+}).join('');
+const svg=`<svg xmlns="http://www.w3.org/2000/svg" width="1340" height="620" viewBox="0 0 1340 620"><rect width="1340" height="620" fill="#f6f3eb"/><g font-family="PingFang SC, sans-serif" fill="#29483f">${drawing}<text x="45" y="590" font-size="16">紫色圈：续接问题　绿色圈：续接对齐　绿色虚线：完整矩形　仅示意墙体关系，门窗开启及家具未绘制。</text></g></svg>`;
+fs.writeFileSync(path.join(out,'comparison.svg'),svg);
+await sharp(Buffer.from(svg)).png().toFile(path.join(out,'comparison.png'));
+console.log(JSON.stringify({out,...summary},null,2));

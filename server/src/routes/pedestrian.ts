@@ -13,7 +13,6 @@ function designPaths(sessionId: string, revisionId: string) {
   const base = path.join(workspacesDir, sessionId, 'designs', revisionId);
   return {
     base,
-    modelPath: path.join(base, 'model.json'),
     configPath: path.join(base, 'pedestrian.json'),
   };
 }
@@ -52,7 +51,7 @@ pedestrianRouter.post('/pedestrian/run', async (req, res) => {
     return;
   }
 
-  const { modelPath, configPath } = designPaths(sessionId, revisionId);
+  const { configPath } = designPaths(sessionId, revisionId);
   const provision = ensurePedestrianConfig(configPath, model);
   if (provision.errors?.length) {
     res.status(500).json({ error: provision.errors.join('；') });
@@ -78,8 +77,6 @@ pedestrianRouter.post('/pedestrian/run', async (req, res) => {
       revisionId,
       model,
       configRaw,
-      modelPath,
-      configPath,
     });
     res.json({
       taskId: out.taskId,

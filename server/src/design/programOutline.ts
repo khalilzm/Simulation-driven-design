@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Unit, Vec2 } from '@sdd/shared';
 import { polygonGeometryError } from '@sdd/shared';
-import { closePolygon, outlineBBox } from '../model/geometry';
+import { closePolygon, outlineBBox } from '../geometry/polygon';
 
 export const PROGRAM_OUTLINE_REL = path.join('inputs', 'outline.json');
 

@@ -1,6 +1,6 @@
 # 仿真反馈驱动的空间自主设计
 
-通过网页对话调用本地 Codex 或 Claude CLI，读取 DXF、生成候选平面，并利用浏览器端日照分析反馈改进方案。
+通过网页对话调用本地 Cursor SDK、Codex app-server 或 Claude CLI，读取 DXF、生成候选平面，并利用日照分析反馈改进方案。
 
 ## 当前交付
 
@@ -10,7 +10,7 @@
 | --- | --- |
 | 架构图、执行时序图、工程设计文档 | 已落盘 |
 | Express、网页对话、会话文件保存 | 已实现骨架 |
-| Codex / Claude 本地 CLI 启动与事件适配 | 已实现，需本机 CLI 已安装并完成登录 |
+| Cursor / Codex / Claude 本机 Agent 与事件适配 | 已实现，需对应本机运行时与登录；Echo 可离线使用 |
 | DXF 解析、平面生成 | 交给 Agent；产品化输入、模型验证与结果展示待实现 |
 | 浏览器工具调用桥与日照 Worker | 协议已定义，执行能力待实现 |
 | 热环境、声环境 | 接口预留，未启用 |
@@ -38,9 +38,11 @@ npm test
 npm start
 ```
 
-打开 http://127.0.0.1:4317 。网页可选择 Codex 或 Claude。切换提供方时创建新会话。
+打开 http://127.0.0.1:4317 。网页默认使用 Codex（本机），也可选择 Cursor、Claude 或 Echo。切换提供方时创建新会话；恢复已有会话时沿用该会话的提供方。
 
-可将 `.env.example` 复制为 `.env` 修改端口、CLI 路径与模型。应用默认绑定本机回环地址，当前定位为单用户本地工具。
+可将 `server/.env.example` 复制为 `server/.env` 修改端口、CLI 路径与模型。应用默认绑定本机回环地址，当前定位为单用户本地工具。
+
+Codex 复用本机登录并自动运行独立任务。默认优先使用桌面应用自带的运行时，回退到 PATH 中的 `codex`；可设置 `CODEX_PATH`。`CODEX_MODEL` 留空时沿用本机模型配置，`MODEL` 非空则覆盖任务模型。详见 [提供方接入说明](server/providers/README.md)。
 
 ```sh
 curl -N http://127.0.0.1:4317/api/chat \

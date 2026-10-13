@@ -1,6 +1,6 @@
 import DxfParser, { type IEntity, type ILwpolylineEntity } from 'dxf-parser';
 import { DXF_LAYERS, polygonGeometryError, type SpaceModel, type Vec2, type Wall } from '@sdd/shared';
-import { closePolygon, pointInPolygonOrOnEdge, polygonArea, polygonEdgesContainedInPolygon, polygonsHaveAreaOverlap } from '../model/geometry';
+import { closePolygon, pointInPolygonOrOnEdge, polygonArea, polygonEdgesContainedInPolygon, polygonsHaveAreaOverlap } from '../geometry/polygon';
 import { validateStoredDesign } from '../model/designValidity';
 
 const EPS = 1e-6;
